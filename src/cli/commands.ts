@@ -21,14 +21,20 @@ export const COMMANDS = {
   init: {
     summary: "Wire hooks into this project and run the first scan",
     usage:
-      "Usage: crank-mem init [--yes] [--git commit|ignore|exclude] [--adr <dir>] [--codex merge|skip] [--codex-trust write|skip]",
-    value: ["git", "adr", "codex", "codex-trust"],
-    bool: ["yes"],
+      "Usage: crank-mem init [--yes] [--plan] [--agents claude|codex|both] [--git commit|ignore|exclude] [--adr <dir>] [--codex merge|skip] [--codex-trust write|skip] | --resume | --rollback",
+    value: ["git", "adr", "codex", "codex-trust", "agents"],
+    bool: ["yes", "plan", "resume", "rollback"],
   },
   scan: { summary: "Full index rebuild", usage: "Usage: crank-mem scan", value: [], bool: [] },
   digest: {
     summary: "Turn background digests on or off, or resume them",
     usage: "Usage: crank-mem digest on|off|resume",
+    value: [],
+    bool: [],
+  },
+  doctor: {
+    summary: "Check this machine and project for a broken or half-done install (read-only)",
+    usage: "Usage: crank-mem doctor",
     value: [],
     bool: [],
   },
@@ -78,9 +84,9 @@ export const COMMANDS = {
   },
   setup: {
     summary: "Install packages, build the dashboard and download the local search model",
-    usage: "Usage: crank-mem setup",
+    usage: "Usage: crank-mem setup [--core | --skip-dashboard] [--skip-model]",
     value: ["model-host", "fetch-timeout-ms"],
-    bool: [],
+    bool: ["core", "skip-dashboard", "skip-model"],
   },
   stats: {
     summary: "Index coverage, memory health and Codex hook status",
