@@ -49,11 +49,23 @@ function removeDuplicateClaudeHooks(
   r.lines.push(`  removed duplicate crank hooks from ${path.relative(root, other)}`);
 }
 
+/**
+ * True when init recorded `--agents codex`: Claude Code is left unwired, and repair keeps it that
+ * way. Stored as `"claude": "skip"` in config.json (aegis/safety-fixes; see ATTRIBUTION.md).
+ */
+export function claudeSkipped(config: object): boolean {
+  return (config as Record<string, unknown>).claude === "skip";
+}
+
 export const claudeWiring: InstallItem = {
   apply(ctx) {
     const { root, config } = ctx;
     const backup = backupWith(ctx);
     const r = report();
+    if (claudeSkipped(config)) {
+      r.lines.push("  Claude Code: not wired (--agents codex)");
+      return r;
+    }
     const { wired, other } = claudeSettingsFiles(root, config.git);
     mergeHooksIntoFile(wired, crankHooks(config.runtime, "claude"), backup);
     addAllowRule(wired, backup);
@@ -65,6 +77,7 @@ export const claudeWiring: InstallItem = {
     const { root, config } = ctx;
     const backup = backupWith(ctx);
     const r = report();
+    if (claudeSkipped(config)) return r;
     attemptRepair(r, "re-wire Claude Code hooks", () => {
       const { wired, other } = claudeSettingsFiles(root, config.git);
       removeDuplicateClaudeHooks(r, root, other, backup);

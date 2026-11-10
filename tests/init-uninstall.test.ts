@@ -61,6 +61,115 @@ function manifestOriginals(root: string): string[] {
   return manifest.entries.map((e: { original: string }) => e.original);
 }
 
+/** The project's files outside .git and .crank, leaving out a package-manager cache some sandboxes put in cwd. */
+function projectFiles(root: string): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(snapshot(root)).filter(([rel]) => !rel.startsWith(".bun/")),
+  );
+}
+
+/** Every file under .crank/, with its bytes. */
+function crankFiles(root: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const walk = (dir: string): void => {
+    for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, item.name);
+      if (item.isDirectory()) walk(full);
+      else out[path.relative(root, full)] = fs.readFileSync(full, "latin1");
+    }
+  };
+  walk(path.join(root, ".crank"));
+  return out;
+}
+
+// ── Safe re-runs: --plan, the journal, --resume, --rollback, --agents (aegis/safety-fixes) ──
+describe("init re-runs", () => {
+  /** An init that fails partway: the Claude settings file is a directory, so wiring it throws. */
+  function interrupted(): { root: string; codexHome: string } {
+    const p = makeProject({ ".claude/settings.json": '{"model":"opus"}\n' });
+    fs.mkdirSync(path.join(p.root, ".claude/settings.local.json"));
+    const r = cli(p.root, p.codexHome, "init", "--yes", "--codex", "skip");
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("crank-mem init --rollback");
+    expect(fs.existsSync(path.join(p.root, ".crank/install-journal.json"))).toBe(true);
+    return p;
+  }
+
+  test("--plan lists what init would change and writes nothing", () => {
+    const { root, codexHome } = makeProject();
+    const before = projectFiles(root);
+    const r = cli(
+      root,
+      codexHome,
+      "init",
+      "--yes",
+      "--plan",
+      "--git",
+      "ignore",
+      "--codex",
+      "merge",
+    );
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("nothing written");
+    for (const f of [".claude/settings.local.json", ".codex/hooks.json", ".gitignore"])
+      expect(r.stdout).toContain(`  ${f}`);
+    expect(fs.existsSync(path.join(root, ".crank"))).toBe(false);
+    expect(projectFiles(root)).toEqual(before);
+  });
+
+  test("after an interrupted init, a plain re-run explains --resume and --rollback and changes nothing", () => {
+    const { root, codexHome } = interrupted();
+    const before = { tree: projectFiles(root), crank: crankFiles(root) };
+    const r = cli(root, codexHome, "init", "--yes", "--codex", "skip");
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("did not finish");
+    expect({ tree: projectFiles(root), crank: crankFiles(root) }).toEqual(before);
+    const doctor = cli(root, codexHome, "doctor");
+    expect(doctor.status).toBe(1);
+    expect(doctor.stdout).toMatch(/^ {2}FAIL {2}init/m);
+  });
+
+  test("--resume finishes an interrupted init once the cause is fixed", () => {
+    const { root, codexHome } = interrupted();
+    fs.rmdirSync(path.join(root, ".claude/settings.local.json"));
+    const r = cli(root, codexHome, "init", "--resume");
+    expect(r.status).toBe(0);
+    expect(fs.existsSync(path.join(root, ".crank/install-journal.json"))).toBe(false);
+    expect(cli(root, codexHome, "doctor").stdout).not.toContain("FAIL");
+    expect(ignored(root, ".crank/cerebrum.md")).toBe(true);
+  });
+
+  test("--rollback restores what the interrupted init changed and removes .crank/", () => {
+    const { root, codexHome } = interrupted();
+    fs.rmdirSync(path.join(root, ".claude/settings.local.json"));
+    const r = cli(root, codexHome, "init", "--rollback");
+    expect(r.status).toBe(0);
+    expect(fs.existsSync(path.join(root, ".crank"))).toBe(false);
+    expect(fs.readFileSync(path.join(root, ".claude/settings.json"), "utf-8")).toBe(
+      '{"model":"opus"}\n',
+    );
+    expect(fs.readFileSync(path.join(root, ".git/info/exclude"), "utf-8")).not.toContain(".crank/");
+  });
+
+  test("--agents codex wires Codex only and leaves .claude/ untouched, through upgrade too", () => {
+    const { root, codexHome } = makeProject();
+    const r = cli(root, codexHome, "init", "--yes", "--agents", "codex");
+    expect(r.status).toBe(0);
+    expect(fs.existsSync(path.join(root, ".claude"))).toBe(false);
+    expect(fs.existsSync(path.join(root, ".codex/hooks.json"))).toBe(true);
+    expect(cli(root, codexHome, "upgrade").status).toBe(0);
+    expect(fs.existsSync(path.join(root, ".claude"))).toBe(false);
+  });
+
+  test("--agents that contradicts --codex exits 1 before writing anything", () => {
+    const { root, codexHome } = makeProject();
+    const r = cli(root, codexHome, "init", "--yes", "--agents", "claude", "--codex", "merge");
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("contradicts");
+    expect(fs.existsSync(path.join(root, ".crank"))).toBe(false);
+  });
+});
+
 describe("init → uninstall round-trip", () => {
   test("default (exclude mode): wiring present, restore byte-identical, zero residue", () => {
     const { root, codexHome } = makeProject();
@@ -729,12 +838,17 @@ describe("init → uninstall round-trip", () => {
     expect(fs.existsSync(path.join(root, ".crank"))).toBe(false);
   });
 
-  test("double init refuses", () => {
+  // Changed in aegis/safety-fixes (see ATTRIBUTION.md): a second init used to refuse with exit 1.
+  // It now reports the install's health, changes nothing, and exits 0 when healthy.
+  test("a second init reports the install's health, changes nothing, and exits 0", () => {
     const { root, codexHome } = makeProject();
     cli(root, codexHome, "init", "--yes", "--codex", "skip");
+    const before = { tree: projectFiles(root), crank: crankFiles(root) };
     const second = cli(root, codexHome, "init", "--yes", "--codex", "skip");
-    expect(second.status).toBe(1);
-    expect(second.stderr).toContain("already initialized");
+    expect(second.status).toBe(0);
+    expect(second.stdout).toContain("already initialized");
+    expect(second.stdout).toMatch(/^ {2}ok {4}claude/m);
+    expect({ tree: projectFiles(root), crank: crankFiles(root) }).toEqual(before);
   });
 
   const notAManifest = (manifest: string): string =>
