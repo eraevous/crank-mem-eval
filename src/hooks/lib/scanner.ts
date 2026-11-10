@@ -7,6 +7,7 @@ import { isExcluded, type CrankConfig } from "./config.ts";
 import { emptyIndex, type AnatomyIndex, type FileEntry } from "./store.ts";
 import { BINARY_SNIFF_BYTES, isIndexableName, TEST_PATH, toPosix } from "./indexable.ts";
 import { gitListing, keepPin, updateActivity } from "./activity.ts";
+import { admittedPath, readAdmitted, realRoot } from "./contained.ts";
 
 // Project walk + full scan + incremental refresh. Reads the filesystem and,
 // in a git repo, `git ls-files`; locking and persistence are the caller's job.
@@ -15,18 +16,22 @@ import { gitListing, keepPin, updateActivity } from "./activity.ts";
  * The one gate for turning a path into a FileEntry: name checks, one stat,
  * size gate, read, NUL sniff, then analyze. Null on any rejection or I/O failure.
  */
-export function indexFile(rootDir: string, relPath: string, config: CrankConfig): FileEntry | null {
+export function indexFile(
+  rootDir: string,
+  relPath: string,
+  config: CrankConfig,
+  root: string | null = realRoot(rootDir),
+): FileEntry | null {
   if (!isIndexableName(relPath, config)) return null;
+  // The containment gate (contained.ts) replaces a bare stat + read, which followed symlinks
+  // out of the project: post-write reaches here for any lexically in-project path.
+  const read = readAdmitted(rootDir, relPath, config.max_file_size_bytes, root);
+  if (read === null) return null;
+  const { buf, stat } = read;
+  // Describe the bytes the gate admitted, not whatever the requested path points at now.
+  const realPath = read.real;
+  // Names (extension, token estimate) keep using the indexed path, as before the gate.
   const absPath = path.join(rootDir, relPath);
-  let stat: fs.Stats;
-  let buf: Buffer;
-  try {
-    stat = fs.statSync(absPath);
-    if (stat.size > config.max_file_size_bytes) return null;
-    buf = fs.readFileSync(absPath);
-  } catch {
-    return null;
-  }
   if (buf.subarray(0, BINARY_SNIFF_BYTES).includes(0)) return null;
   const content = buf.toString("utf-8");
   const ext = path.extname(absPath).toLowerCase();
@@ -39,7 +44,7 @@ export function indexFile(rootDir: string, relPath: string, config: CrankConfig)
       ? extractSymbols(content, ext)
       : undefined;
   const entry: FileEntry = {
-    description: describeFile(absPath),
+    description: describeFile(realPath),
     tokens,
     size: stat.size,
     mtimeMs: stat.mtimeMs,
@@ -118,13 +123,15 @@ export interface Walk {
 // lstat, as the tree walk's Dirent does: symlinks, submodules and
 // deleted-but-tracked paths are not files to index. An oversized file would
 // take a max_files slot that indexFile then leaves empty.
-function isWalkableFile(rootDir: string, rel: string, config: CrankConfig): boolean {
-  try {
-    const stat = fs.lstatSync(path.join(rootDir, rel));
-    return stat.isFile() && stat.size <= config.max_file_size_bytes;
-  } catch {
-    return false;
-  }
+function isWalkableFile(
+  rootDir: string,
+  rel: string,
+  config: CrankConfig,
+  root: string | null = realRoot(rootDir),
+): boolean {
+  // Was lstat, which rejects a symlinked final component but follows a symlinked ancestor
+  // directory. The containment gate rejects both when they lead outside the project.
+  return admittedPath(rootDir, rel, config.max_file_size_bytes, root) !== null;
 }
 
 /**
