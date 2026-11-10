@@ -1,4 +1,4 @@
-# Draft tickets: more agents, more operating systems
+# Tickets: more agents, more operating systems
 
 **Status:** filed as issues #1–#6 on `eraevous/crank-mem-eval` (labels `agents` and `platform`).
 **Builds on:** this branch, `aegis/safety-fixes`, the working branch from here on.
