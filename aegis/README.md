@@ -6,6 +6,8 @@ Not part of crank-mem; see `../ATTRIBUTION.md`.
   and rollback design (section 2, not yet built). Written before the fixes; the commits on this
   branch carry the implementation and test results.
 - `TELOSMITH-TS-SCOPE.md` — what it would take for Telosmith to link records to TypeScript code.
+- `TICKETS.md` — the follow-up tickets (more agents, more operating systems), filed as issues
+  #1–#6.
 - `probes/` — the original synthetic probes the review ran (Node fs primitives, git in a
   monorepo subdirectory).
 
