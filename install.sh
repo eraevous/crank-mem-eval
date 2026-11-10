@@ -23,7 +23,8 @@
 
 set -eu
 
-REPO_DEFAULT="https://github.com/ChrisLiva/crank-mem"
+# This evaluation copy installs itself by default; upstream would point at ChrisLiva/crank-mem.
+REPO_DEFAULT="https://github.com/eraevous/crank-mem-eval"
 REPO="$REPO_DEFAULT"
 REF="main"
 SHA=""

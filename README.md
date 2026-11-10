@@ -1,10 +1,11 @@
 # crank-mem
 
 > **crank-mem is the work of [Chris Liva](https://github.com/ChrisLiva).** The original lives at
-> [ChrisLiva/crank-mem](https://github.com/ChrisLiva/crank-mem), and that is where to install it from.
+> [ChrisLiva/crank-mem](https://github.com/ChrisLiva/crank-mem).
 >
 > This repository is an evaluation copy. It adds safety fixes, an installer, `doctor` and
 > safely re-runnable setup on top of his v0.11.0, offered back to him to use on his terms.
+> The install command below installs this copy; the by-hand steps work with either.
 > [`ATTRIBUTION.md`](ATTRIBUTION.md) lists exactly what changed. Everything else, the design
 > and nearly all of the code, is his.
 
@@ -30,7 +31,7 @@ No hook asks the agent to keep memory. Hooks are advisory-only: they always exit
 One command, per user, no sudo. Read the script first: it is short, and it says what it touches.
 
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/ChrisLiva/crank-mem/main/install.sh
+curl -fsSLO https://raw.githubusercontent.com/eraevous/crank-mem-eval/main/install.sh
 sh install.sh                      # core: packages only; add --with-dashboard and/or --with-model
 cd <your project>
 crank-mem init --plan              # what init would change, writing nothing
