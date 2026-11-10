@@ -5,7 +5,7 @@ It is based on v0.11.0 (`2d72f6c`). Each item is its own commit, with the reason
 message and black-box tests in your existing style.
 
 Three items close safety gaps found by reading the code. Three make crank-mem easier to install
-and keep healthy.
+and keep healthy. The last tidies the README and extends the glossary.
 
 Nothing here is published. Your repository has no license, so this copy stays private, and it
 is yours to use on your terms (see `ATTRIBUTION.md`).
@@ -74,7 +74,7 @@ more gaps:
 - crank-mem builds the evidence itself, in `src/daemon/evidence.ts`:
   1. It takes only the files the due bullets, proposals and stale flags cite.
   2. It admits each one only if the anatomy index holds it and the gate above passes.
-  3. It redacts each excerpt, numbers its lines and caps it.
+  3. It redacts that evidence, numbers its lines and caps it.
 - A memory proposal whose cited files aren't in the evidence is rejected as `unverifiable` in
   code, whatever the model answers. Preference proposals are exempt, since code can't check a
   stated preference.
@@ -117,6 +117,19 @@ One command, per user, no sudo:
 - It links `~/.local/bin/crank-mem` through `current`.
 - `--rollback`, `--status`, `--prune` and `--uninstall` are built in.
 - It never overwrites a `crank-mem` command it didn't make.
+
+## Documentation
+
+### 7. README and glossary
+
+**The README** keeps every fact, but in shorter paragraphs and lists, in your glossary's terms.
+- *What gets indexed* is corrected for change 2.
+- *Upgrading*, *Requirements* and *By hand* get their own headings.
+- The `.crank/` layout is a list.
+
+**The glossary** gains four entries: Evidence, Init journal, Doctor and Setup profile.
+- Evidence is kept distinct from your Excerpt, which is the cerebrum's.
+- Consolidation's definition now matches change 3.
 
 ## Not done
 

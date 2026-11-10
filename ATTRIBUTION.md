@@ -30,5 +30,7 @@ overview.
 5. `crank-mem doctor`; `init` journals itself (`--resume`, `--rollback`), previews (`--plan`),
    picks agents (`--agents`), and reports health on a re-run instead of refusing.
 6. `install.sh`: one command, versioned installs, rollback, prune, uninstall.
+7. README prose and structure tidied (facts unchanged, indexing section corrected); four
+   glossary entries.
 
 Everything else in this repository is upstream's, unchanged.
