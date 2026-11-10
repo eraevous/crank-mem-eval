@@ -13,25 +13,22 @@ At the base commit, upstream has no LICENSE file and declares no license, so all
 the author. This copy is a **private evaluation copy** of proposed safety and installer changes:
 
 - It is not redistributed, published or offered as a replacement for upstream.
-- Any change here is intended to be offered to the author for upstream inclusion, on his terms.
+- Every change here is offered to the author for upstream inclusion, on his terms.
 
 ## Changes in this copy
 
-Branch `proposed-changes`, prepared for Zach Rhodes with Claude (Anthropic).
-Each change is listed with its commit; see `git log 2d72f6c..` for the full history.
+Branch `proposed-changes`, prepared by Zach Rhodes with Claude (Anthropic). `git log 2d72f6c..`
+lists one commit per change, each with its reasons and tests; `PROPOSED-CHANGES.md` is the
+overview.
 
-- `a48249f` — this file.
-- `3aeb6e0` — confine indexing to the project by real path (`src/hooks/lib/contained.ts`).
-- `3b776c0` — honour the enclosing repository for monorepo subdirectory projects; a git failure
-  inside a repository now keeps the previous index (reverses an upstream fallback, see the
-  commit message).
-- `8b537c1` — consolidation reads a gated evidence bundle with no tools, behind its own
-  switch, off by default (ADR 0013).
-
-- `8940d73` — `setup --core`, `--skip-dashboard`, `--skip-model`, remembered for `upgrade`.
-- `6aec30f` — `crank-mem doctor`; `init` journals itself, with `--resume`, `--rollback`, `--plan`
-  and `--agents`, and reports health on a re-run instead of refusing.
-- `ae95a60` — `install.sh`: one command, versioned installs, rollback, prune, uninstall.
-- `8186081`, `a18ef17` — README and test-expectation follow-ups.
+1. Indexing stays inside the project by real path (`src/hooks/lib/contained.ts`).
+2. A project in a monorepo subdirectory honours the enclosing repository's ignores, and exclude
+   mode works there; a git failure inside a repository keeps the previous index.
+3. Consolidation reads a gated evidence bundle with no tools, behind its own switch, off by
+   default (ADR 0013).
+4. `setup --core`, `--skip-dashboard` and `--skip-model`, remembered by `upgrade`.
+5. `crank-mem doctor`; `init` journals itself (`--resume`, `--rollback`), previews (`--plan`),
+   picks agents (`--agents`), and reports health on a re-run instead of refusing.
+6. `install.sh`: one command, versioned installs, rollback, prune, uninstall.
 
 Everything else in this repository is upstream's, unchanged.
