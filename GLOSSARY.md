@@ -208,8 +208,12 @@ _Avoid_: Outdated, invalid, deleted
 Said only of an observation that carries a stale flag.
 _Avoid_: Stale anatomy (say behind), stale hooks (say drift), stale hash (say outdated)
 
+**Evidence**:
+The redacted, line-numbered contents of the cited files that consolidation is allowed to see, admitted only when the anatomy holds the file and its real path is inside the project.
+_Avoid_: Excerpt (that is the cerebrum's), context, sources
+
 **Consolidation**:
-The pass after a digest that checks pending proposals, stale flags and affected bullets against the code, then edits the cerebrum.
+The pass after a digest that checks pending proposals, stale flags and affected bullets against evidence from the files they cite, then edits the cerebrum. It runs only when switched on for a checkout.
 _Avoid_: Cleanup, compaction, merge
 
 **Upkeep**:
@@ -267,6 +271,18 @@ _Avoid_: Tracking mode
 **Registry**:
 The per-user list of projects that the dashboard shows.
 _Avoid_: Project list, index
+
+**Init journal**:
+The file init writes before its first change and deletes when done; one left behind marks an interrupted init, which `init --resume` finishes and `init --rollback` undoes.
+_Avoid_: Lock, checkpoint
+
+**Doctor**:
+The read-only check of a machine and project that names the command fixing each failure.
+_Avoid_: Health check (unqualified), status
+
+**Setup profile**:
+Which optional parts `setup` installed (the dashboard, the search model), kept per user so that `upgrade` respects it.
+_Avoid_: Install mode, tier
 
 **Dashboard**:
 The read-only local web page that shows each registered project's observations, curation, health and usage.

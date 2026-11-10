@@ -48,7 +48,7 @@ and the set of names would never be complete.
      - the file is regular and within size
      - the file is read and fstat'ed through one descriptor opened `O_NOFOLLOW`
   4. It redacts each admitted text on the way in.
-  5. It sends excerpts of at most 400 lines a file and 60,000 characters in all. Each line is
+  5. It sends the evidence, at most 400 lines a file and 60,000 characters in all. Each line is
      `<n>| <text>`, and each file has a header with a 16-hex SHA-256 prefix. Refused citations
      are listed as `=== unavailable: <path> (<reason>)`.
 - A memory proposal none of whose citations was admitted is rejected with
@@ -69,7 +69,7 @@ and the set of names would never be complete.
   cited in their title, narrative or reason. Using `observation_files` would be a later
   improvement.
 - No probe is needed for the guard itself: no tool exists to misuse. The model still sees the
-  admitted excerpts, which reach the provider under the user's own login, as the digest input
+  admitted evidence, which reaches the provider under the user's own login, as the digest input
   already does.
 - `gateway.ts` keeps its `project` option and ADR 0011's argv shape. Nothing calls it now.
   Removing it is a follow-up for the author.

@@ -29,7 +29,7 @@ import { redact } from "./redact.ts";
 //   The model can no longer explore beyond the cited files. A proposal citing nothing the
 //   bundle holds is to be rejected as unverifiable, not accepted on trust.
 //
-// Line format: every excerpt line is "<n>| <text>", so text that looks like a header or an
+// Line format: every evidence line is "<n>| <text>", so text that looks like a header or an
 // instruction can never start a line of its own in the block.
 
 /** Lines kept per file, and the bundle's total character budget. */
@@ -39,7 +39,7 @@ export const EVIDENCE_TOTAL_CHARS = 60_000;
 export interface Evidence {
   /** The `[EVIDENCE]` input block, or "" when nothing was cited. */
   block: string;
-  /** Repo-relative paths whose excerpts are in the block, in order. */
+  /** Repo-relative paths whose evidence is in the block, in order. */
   admitted: string[];
   /** The citations, as written, that resolved to an admitted path. */
   admittedCitations: Set<string>;
