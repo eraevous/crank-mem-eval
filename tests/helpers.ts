@@ -343,11 +343,15 @@ export function fakeClaude(
   };
 }
 
-/** A temp project with digests on; `extraConfig` keys are written into config.json as given, and `temps` registers the root for cleanup. */
+/**
+ * A temp project with digests and consolidation on; `extraConfig` keys are written into
+ * config.json as given, and `temps` registers the root for cleanup. Consolidation got its own
+ * switch in proposed-changes; this helper turns it on so the consolidation tests keep running.
+ */
 export function digestProject(extraConfig: Record<string, unknown> = {}, temps?: string[]): string {
   const root = makeCrankProject();
   temps?.push(root);
-  saveConfig(path.join(root, ".crank"), { ...defaultConfig(), digest: true });
+  saveConfig(path.join(root, ".crank"), { ...defaultConfig(), digest: true, consolidate: true });
   if (Object.keys(extraConfig).length > 0) {
     const file = path.join(root, ".crank/config.json");
     fs.writeFileSync(

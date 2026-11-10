@@ -32,6 +32,12 @@ export const COMMANDS = {
     value: [],
     bool: [],
   },
+  consolidate: {
+    summary: "Let consolidation edit cerebrum.md after each digest, or stop it (off by default)",
+    usage: "Usage: crank-mem consolidate on|off",
+    value: [],
+    bool: [],
+  },
   search: {
     summary: "Search stored memory by meaning or keyword",
     usage:

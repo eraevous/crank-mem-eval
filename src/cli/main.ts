@@ -8,6 +8,7 @@ const RUNNERS: Record<string, Runner> = {
   init: async (args) => (await import("./init.ts")).run(args),
   scan: async (args) => (await import("./scan.ts")).run(args),
   digest: async (args) => (await import("./digest.ts")).run(args),
+  consolidate: async (args) => (await import("./consolidate.ts")).run(args),
   search: async (args) => (await import("./recall.ts")).search(args),
   timeline: async (args) => (await import("./recall.ts")).timeline(args),
   get: async (args) => (await import("./recall.ts")).get(args),
