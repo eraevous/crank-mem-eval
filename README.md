@@ -7,7 +7,8 @@ re-indexes on writes. With digests on, Claude Code sessions are digested
 automatically into a per-project store, `.crank/memory.db`, that agents search
 with `crank-mem search`, `timeline` and `get`, and that shows up at session
 start and when an agent reads a file it covers. After a digest, consolidation
-checks what sessions proposed against the code and keeps `cerebrum.md`; no
+(off until `crank-mem consolidate on`) checks what sessions proposed against
+excerpts of the files they cite and keeps `cerebrum.md`; no
 hook asks the agent to keep memory. Advisory-only — hooks always exit 0.
 
 ## Install
@@ -65,6 +66,7 @@ with `@vscode/tree-sitter-wasm` for `outline` and `unfold`.
 - `crank-mem init` — wire hooks into `.claude`/`.codex`, add the `Bash(crank-mem search *)`, `Bash(crank-mem timeline *)`, `Bash(crank-mem get *)`, `Bash(crank-mem outline *)` and `Bash(crank-mem unfold *)` allow rules to the Claude settings file so agents run the recall and code-reading commands without a prompt, seed `.crank/`, first scan; removes crank hooks from the other Claude settings file
 - `crank-mem scan` — full index rebuild
 - `crank-mem digest on|off|resume` — turn background digests on or off for this checkout, a switch kept in the gitignored `.crank/config.local.json`; `resume` clears a stop and restarts the daemon
+- `crank-mem consolidate on|off` — let consolidation edit `cerebrum.md` after each digest, or stop it; off by default, kept beside `digest` in `.crank/config.local.json`, so a committed `config.json` cannot turn it on
 - `crank-mem search <query>` — search stored memory by meaning or keyword (`--limit`, `--type`, `--since YYYY-MM-DD`, `--file`, and `--stale` to include observations flagged stale, marked `[stale]`); keyword only until `setup` has run
 - `crank-mem timeline <id>` — the observations around one id (`--depth`)
 - `crank-mem get <id...>` — print stored observations in full, with the date and reason of a stale flag
@@ -143,14 +145,21 @@ the session showed to be wrong or replaced. Search, session start and file
 history leave flagged observations out; `crank-mem search --stale` includes
 them, and `crank-mem get` shows the flag.
 
-After a digest, consolidation runs when the project has a `cerebrum.md` and
-something waits for it, at most once every 2 hours per project. It reads
+After a digest, consolidation runs when `crank-mem consolidate on` was run in
+this checkout, the project has a `cerebrum.md` and something waits for it, at
+most once every 2 hours per project. It reads
 `cerebrum.md`, up to 20 pending proposals, up to 20 stale flags not yet
 reviewed, and the bullets whose cited files changed since the last consolidation
 that succeeded (before one, since the bullet's own date) and, until the first one succeeds,
-those citing a missing file. A second `claude -p` run checks them against the code with
-read-only `Read`, `Grep` and `Glob` tools over the project, under deny rules
-that keep the files crank-mem never indexes out of reach (ADR 0011). It
+those citing a missing file. crank-mem then collects the files those bullets,
+proposals and flags cite in backticks, admitting a file only when the anatomy
+index holds it (so the sensitive-file filter, hidden paths, excludes and git
+ignores all apply), its real path is inside the project, and it is a regular
+file; it redacts each one and sends line-numbered excerpts, capped at 400 lines
+a file and 60,000 characters in all. A second `claude -p` run, with no tools
+and the digest call's lockdown (ADR 0013), checks the work against those
+excerpts only. A memory proposal whose cited files are not among them is
+rejected as unverifiable, whatever the model answers. It
 accepts or rejects each proposal, confirms or clears each flag, and edits
 `cerebrum.md`, skipping any added bullet that would take the file past 150
 lines or 3,000 tokens. Before an edit it copies the file to `.crank/backups/cerebrum/`,

@@ -67,6 +67,12 @@ export interface CrankConfig {
    * cannot turn digests on for every checkout.
    */
   digest: boolean;
+  /**
+   * After a digest, let consolidation edit cerebrum.md (off by default). Local-only like
+   * `digest`. Before aegis/safety-fixes (see ATTRIBUTION.md), consolidation always followed a
+   * digest; it now needs its own switch, so turning digests on does not turn it on.
+   */
+  consolidate: boolean;
 }
 
 export function defaultConfig(): CrankConfig {
@@ -84,6 +90,7 @@ export function defaultConfig(): CrankConfig {
     codex: null,
     debug: false,
     digest: false,
+    consolidate: false,
   };
 }
 
@@ -105,7 +112,9 @@ const CODEX_CHOICES: readonly CodexChoice[] = ["skip", "review", "trust"];
  */
 export function loadConfig(crankDir: string): CrankConfig {
   const config = defaultConfig();
-  config.digest = loadDigest(crankDir);
+  const local = loadLocal(crankDir);
+  config.digest = local.digest;
+  config.consolidate = local.consolidate;
   let raw: Record<string, unknown>;
   try {
     const parsed = JSON.parse(fs.readFileSync(path.join(crankDir, CONFIG_FILE), "utf-8"));
@@ -116,7 +125,8 @@ export function loadConfig(crankDir: string): CrankConfig {
   }
   for (const key of Object.keys(config) as (keyof CrankConfig)[]) {
     const value = raw[key];
-    if (value === undefined || key === "digest" || key === "codex") continue;
+    if (value === undefined || key === "digest" || key === "consolidate" || key === "codex")
+      continue;
     if (key === "excludes") {
       if (Array.isArray(value) && value.every((v) => typeof v === "string"))
         config.excludes = value;
@@ -145,24 +155,30 @@ export function loadConfig(crankDir: string): CrankConfig {
   return config;
 }
 
-function loadDigest(crankDir: string): boolean {
+/** The local-only switches from config.local.json; each is on only when it is exactly `true`. */
+function loadLocal(crankDir: string): { digest: boolean; consolidate: boolean } {
   try {
     const parsed: unknown = JSON.parse(
       fs.readFileSync(path.join(crankDir, LOCAL_CONFIG_FILE), "utf-8"),
     );
-    return isObj(parsed) && parsed.digest === true;
+    if (!isObj(parsed)) return { digest: false, consolidate: false };
+    return { digest: parsed.digest === true, consolidate: parsed.consolidate === true };
   } catch {
-    return false;
+    return { digest: false, consolidate: false };
   }
 }
 
 export function saveConfig(crankDir: string, config: CrankConfig): void {
-  const { digest, ...rest } = config;
+  const { digest, consolidate, ...rest } = config;
   const shared: Record<string, unknown> = { ...rest };
   if (shared.codex === null) delete shared.codex;
   fs.writeFileSync(path.join(crankDir, CONFIG_FILE), JSON.stringify(shared, null, 2) + "\n");
   const local = path.join(crankDir, LOCAL_CONFIG_FILE);
-  if (digest) fs.writeFileSync(local, JSON.stringify({ digest: true }, null, 2) + "\n");
+  // Only the switches that are on are written, so a digest-only file stays {"digest": true}.
+  const on: Record<string, true> = {};
+  if (digest) on.digest = true;
+  if (consolidate) on.consolidate = true;
+  if (Object.keys(on).length > 0) fs.writeFileSync(local, JSON.stringify(on, null, 2) + "\n");
   else fs.rmSync(local, { force: true });
 }
 

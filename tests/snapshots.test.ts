@@ -62,7 +62,10 @@ function project(): string {
     "src/scan.ts": "export {};\n",
   });
   temps.push(root);
-  fs.writeFileSync(path.join(root, ".crank", LOCAL_CONFIG_FILE), JSON.stringify({ digest: true }));
+  fs.writeFileSync(
+    path.join(root, ".crank", LOCAL_CONFIG_FILE),
+    JSON.stringify({ digest: true, consolidate: true }),
+  );
   return root;
 }
 

@@ -1,6 +1,8 @@
 # 0011 — The consolidation call gets read-only tools in the project (probe-verified)
 
-Date: 2026-11-04. Status: accepted.
+Date: 2026-11-04. Status: accepted; its decision to give the call tools is superseded by ADR 0013
+in the private evaluation copy (branch `aegis/safety-fixes`; see `ATTRIBUTION.md`). The findings
+below stay as recorded.
 
 ## Context
 
