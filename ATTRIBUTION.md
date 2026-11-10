@@ -20,4 +20,12 @@ the author. This copy is a **private evaluation copy** of proposed safety and in
 Branch `aegis/safety-fixes`, prepared for Zach Rhodes with Claude (Anthropic).
 Each change is listed with its commit; see `git log 2d72f6c..` for the full history.
 
-- (filled in as commits land)
+- `a48249f` — this file, and Telosmith records in `.aec/` (purpose, requirements, decisions).
+- `3aeb6e0` — confine indexing to the project by real path (`src/hooks/lib/contained.ts`).
+- `3b776c0` — honour the enclosing repository for monorepo subdirectory projects; a git failure
+  inside a repository now keeps the previous index (reverses an upstream fallback, see the
+  commit message).
+- `8b537c1` — consolidation reads a gated evidence bundle with no tools, behind its own
+  switch, off by default (ADR 0013).
+
+Everything else in this repository is upstream's, unchanged.
