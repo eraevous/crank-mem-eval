@@ -10,10 +10,13 @@ crank-mem is the work of **Chris Liva** ([@ChrisLiva](https://github.com/ChrisLi
 ## License status
 
 At the base commit, upstream has no LICENSE file and declares no license, so all rights stay with
-the author. This copy is a **private evaluation copy** of proposed safety and installer changes:
+the author. This repository is public so that the author can review the proposed safety and
+installer changes in it:
 
-- It is not redistributed, published or offered as a replacement for upstream.
+- It is not a release, a fork to depend on, or a replacement for upstream: install crank-mem
+  from upstream.
 - Every change here is offered to the author for upstream inclusion, on his terms.
+- If the author asks, this repository will be made private or taken down.
 
 ## Changes in this copy
 

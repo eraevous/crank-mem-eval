@@ -7,8 +7,9 @@ message and black-box tests in your existing style.
 Three items close safety gaps found by reading the code. Three make crank-mem easier to install
 and keep healthy. The last tidies the README and extends the glossary.
 
-Nothing here is published. Your repository has no license, so this copy stays private, and it
-is yours to use on your terms (see `ATTRIBUTION.md`).
+Your repository has no license, so all of this stays yours to use on your terms. This
+repository is public only so that you can review it; say the word and it goes private or
+comes down (see `ATTRIBUTION.md`).
 
 ## Tests
 
