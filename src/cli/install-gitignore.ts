@@ -52,6 +52,10 @@ function unignoreForCommit(r: Report, root: string, backup: (file: string) => vo
     );
 }
 
+/** Exclude mode outside any git repository has nothing to write to; say so instead of staying silent. */
+const EXCLUDE_NO_REPO =
+  "crank-mem: warning: git mode is exclude, but this project is not inside a git repository, so nothing keeps .crank/ out of git if one is created later.";
+
 export const gitIgnoreState: InstallItem = {
   apply(ctx) {
     const { root, config } = ctx;
@@ -63,6 +67,7 @@ export const gitIgnoreState: InstallItem = {
     }
     const ignoreFile = modeIgnoreFile(root, config.git);
     if (ignoreFile) addIgnoreLines(ignoreFile, backup);
+    else if (config.git === "exclude") r.warnings.push(EXCLUDE_NO_REPO);
     return r;
   },
   // Ignore and exclude mode regain a missing ignore block, whose absence

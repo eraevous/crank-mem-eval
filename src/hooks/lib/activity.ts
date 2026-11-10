@@ -34,17 +34,39 @@ export function runGit(
 }
 
 /**
- * Tracked plus untracked-but-not-ignored paths, or null when root is not a
- * git work tree root or git fails. Submodules list as one path (a directory,
- * dropped by the isFile check), so their contents are never indexed. An
- * unmerged path lists once per conflict stage, so the listing is deduplicated.
+ * True when `rootDir` or any ancestor holds `.git` (a directory, or a file for worktrees and
+ * submodules). A filesystem walk, not a git call, so it still answers when git itself fails.
+ *
+ * Added in aegis/safety-fixes (see ATTRIBUTION.md): the old check looked for `.git` in
+ * `rootDir` only, so a project rooted in a monorepo subdirectory was treated as "not a repo"
+ * and walked without its .gitignore.
  */
-export function gitListing(rootDir: string): string[] | null {
-  if (!fs.existsSync(path.join(rootDir, ".git"))) return null;
+export function insideGitRepo(rootDir: string): boolean {
+  let dir = path.resolve(rootDir);
+  for (;;) {
+    if (fs.existsSync(path.join(dir, ".git"))) return true;
+    const parent = path.dirname(dir);
+    if (parent === dir) return false;
+    dir = parent;
+  }
+}
+
+/**
+ * Tracked plus untracked-but-not-ignored paths under `rootDir`, relative to it; null outside
+ * any git repository; "failed" when `rootDir` is inside a repository but git fails.
+ *
+ * Run from `rootDir`, `git ls-files` lists only that subtree, relative to it, and applies every
+ * applicable ignore file, the enclosing repository's included. Callers must treat "failed" as
+ * "do not know what is ignored" and keep what they have rather than walk unfiltered.
+ * Submodules list as one path (a directory, dropped by the isFile check), so their contents are
+ * never indexed. An unmerged path lists once per conflict stage, so the listing is deduplicated.
+ */
+export function gitListing(rootDir: string): string[] | null | "failed" {
+  if (!insideGitRepo(rootDir)) return null;
   const r = runGit(rootDir, ["ls-files", "-co", "--exclude-standard", "-z"], GIT_TIMEOUT_MS);
   if ("error" in r) {
-    debugEvent("walk-fallback", { reason: r.error });
-    return null;
+    debugEvent("walk-refused", { reason: r.error });
+    return "failed";
   }
   return [...new Set(r.stdout.split("\0").filter(Boolean))];
 }
@@ -65,7 +87,7 @@ function churnFor(
   config: CrankConfig,
   cached: Churn | undefined,
 ): Churn | undefined {
-  if (!fs.existsSync(path.join(rootDir, ".git"))) return undefined;
+  if (!insideGitRepo(rootDir)) return undefined;
   const rev = runGit(rootDir, ["rev-parse", "HEAD"], GIT_TIMEOUT_MS);
   if ("error" in rev) {
     debugEvent("churn-skipped", { reason: rev.error });
@@ -76,7 +98,9 @@ function churnFor(
   // One \x1e record per commit, then "\0\n" and NUL-separated paths.
   const log = runGit(
     rootDir,
-    ["log", `-n${CHURN_COMMITS}`, "-z", "--name-only", "--format=%x1e"],
+    // --relative: paths relative to rootDir and limited to it, so a monorepo subdirectory
+    // project counts only its own files, under the names its index uses.
+    ["log", `-n${CHURN_COMMITS}`, "-z", "--name-only", "--relative", "--format=%x1e"],
     GIT_TIMEOUT_MS,
   );
   if ("error" in log) {
