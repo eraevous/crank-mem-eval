@@ -1,5 +1,13 @@
 # crank-mem
 
+> **crank-mem is the work of [Chris Liva](https://github.com/ChrisLiva).** The original lives at
+> [ChrisLiva/crank-mem](https://github.com/ChrisLiva/crank-mem), and that is where to install it from.
+>
+> This repository is an evaluation copy. It adds safety fixes, an installer, `doctor` and
+> safely re-runnable setup on top of his v0.11.0, offered back to him to use on his terms.
+> [`ATTRIBUTION.md`](ATTRIBUTION.md) lists exactly what changed. Everything else, the design
+> and nearly all of the code, is his.
+
 Project memory for coding agents (Claude Code and Codex).
 
 crank-mem keeps two things for each project and hands them to every new session:
