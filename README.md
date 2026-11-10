@@ -13,12 +13,35 @@ hook asks the agent to keep memory. Advisory-only — hooks always exit 0.
 
 ## Install
 
+One command, per user, no sudo. Read the script first; it is short and says what it touches.
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/ChrisLiva/crank-mem/main/install.sh
+sh install.sh                      # core: packages only; add --with-dashboard and/or --with-model
+cd <your project>
+crank-mem init --plan              # what init would change, writing nothing
+crank-mem init                     # then check any time with: crank-mem doctor
+```
+
+`install.sh` clones the chosen `--ref` (default `main`; `--sha <commit>` refuses anything else)
+into `~/.local/share/crank-mem/versions/<commit>/`, runs `crank-mem setup --core` there, and only
+then switches `~/.local/share/crank-mem/current` to it and links `~/.local/bin/crank-mem`. A failed
+setup switches nothing; re-running is safe. Upgrade by running it again with a newer `--ref`, then
+`crank-mem upgrade` in each project; `sh install.sh --rollback` switches back, `--status` shows the
+versions, `--prune` deletes all but the current and previous, and `--uninstall` removes the install
+(run `crank-mem uninstall` in each project first; `~/.crank` stays).
+
+Or by hand, as before:
+
 ```sh
 git clone <this repo> ~/GitHub/crank-mem
 ln -s ~/GitHub/crank-mem/bin/crank-mem ~/.local/bin/crank-mem
 crank-mem setup          # once per machine: packages, the dashboard build and the local search model
 cd <your project> && crank-mem init
 ```
+
+`crank-mem setup --core` installs the packages only; `--skip-dashboard` and `--skip-model` leave
+out one part each. The choice is kept in `~/.crank/setup.json`, and `upgrade` respects it.
 
 `setup` installs the clone's packages, then the `dashboard/` packages, builds
 the dashboard into `dashboard/dist/` and stamps the build with the clone's
@@ -64,6 +87,8 @@ with `@vscode/tree-sitter-wasm` for `outline` and `unfold`.
 ## Commands
 
 - `crank-mem init` — wire hooks into `.claude`/`.codex`, add the `Bash(crank-mem search *)`, `Bash(crank-mem timeline *)`, `Bash(crank-mem get *)`, `Bash(crank-mem outline *)` and `Bash(crank-mem unfold *)` allow rules to the Claude settings file so agents run the recall and code-reading commands without a prompt, seed `.crank/`, first scan; removes crank hooks from the other Claude settings file
+- `crank-mem init` — wire this project. `--plan` lists every file it would create or change and writes nothing; `--agents claude|codex|both` picks the wiring. It journals itself: after an interrupted run, `init --resume` finishes it and `init --rollback` undoes it, and a re-run on a finished install reports its health and changes nothing
+- `crank-mem doctor` — read-only health check of this machine and project: runtime, packages, optional parts, hooks, Claude and Codex wiring, whether the git mode is actually in effect, the index, the memory switches and any unfinished init; each failure names the command that fixes it, and it exits 1 only when one fails
 - `crank-mem scan` — full index rebuild
 - `crank-mem digest on|off|resume` — turn background digests on or off for this checkout, a switch kept in the gitignored `.crank/config.local.json`; `resume` clears a stop and restarts the daemon
 - `crank-mem consolidate on|off` — let consolidation edit `cerebrum.md` after each digest, or stop it; off by default, kept beside `digest` in `.crank/config.local.json`, so a committed `config.json` cannot turn it on
