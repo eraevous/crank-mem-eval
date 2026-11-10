@@ -246,6 +246,52 @@ describe("init → uninstall round-trip", () => {
     expect(fs.readFileSync(path.join(root, ".gitignore"), "utf-8")).toBe("dist/\n");
   });
 
+  // ── Monorepo subdirectory (proposed-changes; see ATTRIBUTION.md) ─────────────────────
+  // init run in packages/app of a repository whose .git is two levels up.
+
+  test("exclude mode in a monorepo subdirectory writes the enclosing repo's exclude file, so nothing in .crank/ is committable", () => {
+    const { root, codexHome } = makeProject({ "packages/app/src/a.ts": "export const a = 1;\n" });
+    const app = path.join(root, "packages/app");
+    const init = cli(app, codexHome, "init", "--yes", "--git", "exclude", "--codex", "skip");
+    expect(init.status).toBe(0);
+    expect(init.stderr).not.toContain("not inside a git repository");
+    expect(fs.readFileSync(path.join(root, ".git/info/exclude"), "utf-8")).toContain(".crank/");
+    for (const rel of ["cerebrum.md", "anatomy-index.json", "config.json", "anatomy.md"])
+      expect(ignored(root, `packages/app/.crank/${rel}`)).toBe(true);
+    const status = spawnSync("git", ["status", "--porcelain", "-uall"], {
+      cwd: root,
+      encoding: "utf-8",
+    });
+    expect(status.stdout).not.toContain(".crank/");
+    cli(app, codexHome, "uninstall", "--yes", "--keep-crank");
+    expect(fs.readFileSync(path.join(root, ".git/info/exclude"), "utf-8")).not.toContain(".crank/");
+  });
+
+  test("a monorepo subdirectory project honours the enclosing repo's .gitignore when it indexes", () => {
+    const { root, codexHome } = makeProject({
+      ".gitignore": "packages/app/local-notes.md\n",
+      "packages/app/src/a.ts": "export const a = 1;\n",
+      "packages/app/local-notes.md": "# SYNTHETIC-IGNORED-CANARY\n",
+    });
+    const app = path.join(root, "packages/app");
+    expect(cli(app, codexHome, "init", "--yes", "--git", "exclude", "--codex", "skip").status).toBe(
+      0,
+    );
+    const index = JSON.parse(fs.readFileSync(path.join(app, ".crank/anatomy-index.json"), "utf-8"));
+    expect(Object.keys(index.files)).toContain("src/a.ts");
+    expect(Object.keys(index.files)).not.toContain("local-notes.md");
+    expect(JSON.stringify(index)).not.toContain("SYNTHETIC-IGNORED-CANARY");
+  });
+
+  test("exclude mode outside any git repository says it has nothing to write to", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "crank-nogit-"));
+    const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "crank-codex-"));
+    fs.writeFileSync(path.join(root, "a.ts"), "export const a = 1;\n");
+    const init = cli(root, codexHome, "init", "--yes", "--git", "exclude", "--codex", "skip");
+    expect(init.status).toBe(0);
+    expect(init.stderr + init.stdout).toContain("not inside a git repository");
+  });
+
   test("upgrade replaces a pre-allowlist .crank/.gitignore, and restore brings the old one back", () => {
     const { root, codexHome } = makeProject();
     cli(root, codexHome, "init", "--yes", "--git", "commit", "--codex", "skip");

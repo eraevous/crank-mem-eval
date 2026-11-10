@@ -145,7 +145,10 @@ describe("session-start hook (black-box)", () => {
     expect(anatomy).toContain("## Most active files\n\n- `z/hot.ts` — Hot path.");
   });
 
-  test("a .git that git rejects falls back to the directory walk and logs why", () => {
+  // Changed in proposed-changes (see ATTRIBUTION.md): this case used to fall back to the
+  // directory walk, which indexed the git-ignored reports/r.html. Inside a repository whose
+  // listing fails, what is ignored is unknown, so nothing new is indexed and the refusal is logged.
+  test("a .git that git rejects indexes nothing new, rather than git-ignored files, and logs why", () => {
     const root = makeCrankProject({
       ".gitignore": "reports/\n",
       "reports/r.html": "x",
@@ -158,9 +161,10 @@ describe("session-start hook (black-box)", () => {
     const index = JSON.parse(
       fs.readFileSync(path.join(root, ".crank/anatomy-index.json"), "utf-8"),
     );
-    expect(Object.keys(index.files).sort()).toEqual(["a.ts", "reports/r.html"]);
+    expect(Object.keys(index.files)).not.toContain("reports/r.html");
+    expect(Object.keys(index.files)).toEqual([]);
     const events = readDebugLog(root).flatMap((r) => r.events);
-    expect(events.find((e) => e.event === "walk-fallback")?.reason).toMatch(/^exit \d+$/);
+    expect(events.find((e) => e.event === "walk-refused")?.reason).toMatch(/^exit \d+$/);
   });
 
   test("a git repo with no commits skips churn and logs why", () => {

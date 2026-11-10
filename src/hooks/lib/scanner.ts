@@ -118,6 +118,8 @@ export interface Walk {
   truncated: boolean;
   /** Indexable-named candidates before the cap; null when the walk stopped uncounted. */
   candidateCount: number | null;
+  /** Set when the project is inside a git repository but its listing failed (fail closed). */
+  failed?: boolean;
 }
 
 // lstat, as the tree walk's Dirent does: symlinks, submodules and
@@ -143,6 +145,10 @@ function isWalkableFile(
  */
 export function walkProject(rootDir: string, config: CrankConfig, seeds: string[] = []): Walk {
   const listed = gitListing(rootDir);
+  // Inside a repository whose listing failed, what is git-ignored is unknown: walking the tree
+  // would index ignored files. Report the failure and let the caller keep its current index.
+  if (listed === "failed")
+    return { files: [], truncated: false, candidateCount: null, failed: true };
   return listed ? walkListing(rootDir, listed, config, seeds) : walkTree(rootDir, config, seeds);
 }
 
@@ -217,8 +223,10 @@ export function fullScan(
   previous: AnatomyIndex = emptyIndex(),
 ): AnatomyIndex {
   const seeds = updateActivity(rootDir, config, previous);
-  const index = emptyIndex();
   const walk = walkProject(rootDir, config, seeds);
+  // A failed listing keeps the previous index (empty on a first scan) rather than an unfiltered walk.
+  if (walk.failed) return previous;
+  const index = emptyIndex();
   for (const rel of walk.files) {
     const entry = indexFile(rootDir, rel, config);
     if (entry) index.files[rel] = keepPin(entry, previous.files[rel]);
@@ -252,6 +260,12 @@ export function refreshIndex(
 ): RefreshResult {
   const deadline = Date.now() + budgetMs;
   const walk = walkProject(rootDir, config, updateActivity(rootDir, config, index));
+  // A failed listing must not delete every entry, nor fall back to an unfiltered walk: keep the
+  // index as it is and report the refresh as partial, which the injection already surfaces.
+  if (walk.failed) {
+    index.meta.partial = true;
+    return { index, changed: 0, added: 0, removed: 0, partial: true };
+  }
   const walked = walk.files;
   const walkedSet = new Set(walked);
   let changed = 0,

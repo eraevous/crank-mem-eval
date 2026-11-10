@@ -229,7 +229,7 @@ Either writes `.crank/debug.log` — one record per hook run:
 `ok:false` carries the full stack. Useful events: `refresh` (changed/added/
 removed/partial counts), `injected` (bytes vs. budget, plus estimated tokens), `reindex`
 (`committed:false` means the write did not land), `lock-timeout` (contention —
-the only way to tell it apart from "nothing to write"), `walk-fallback` (git listing failed, so the directory walk ran),
+the only way to tell it apart from "nothing to write"), `walk-refused` (inside a git repository the listing failed, so nothing new was indexed rather than walking past `.gitignore`),
 `churn-skipped` (no churn list, for example before the first commit).
 
 `CRANK_DEBUG=0` forces it off. The log is gitignored, capped at 1 MB then
