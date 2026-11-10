@@ -28,4 +28,10 @@ Each change is listed with its commit; see `git log 2d72f6c..` for the full hist
 - `8b537c1` — consolidation reads a gated evidence bundle with no tools, behind its own
   switch, off by default (ADR 0013).
 
+- `8940d73` — `setup --core`, `--skip-dashboard`, `--skip-model`, remembered for `upgrade`.
+- `6aec30f` — `crank-mem doctor`; `init` journals itself, with `--resume`, `--rollback`, `--plan`
+  and `--agents`, and reports health on a re-run instead of refusing.
+- `ae95a60` — `install.sh`: one command, versioned installs, rollback, prune, uninstall.
+- `8186081`, `a18ef17` — README and test-expectation follow-ups.
+
 Everything else in this repository is upstream's, unchanged.
