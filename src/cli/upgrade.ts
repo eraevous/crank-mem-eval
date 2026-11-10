@@ -1,7 +1,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { cliVersion, REPO_ROOT } from "./version.ts";
-import { dashboardCurrent, dashboardDir, installPackages, setUpDashboard } from "./setup.ts";
+import {
+  dashboardCurrent,
+  dashboardDir,
+  installPackages,
+  readSetupProfile,
+  setUpDashboard,
+} from "./setup.ts";
 import { openProject, reportMigration } from "./project.ts";
 import { newBackupDir } from "./backups.ts";
 import { printReport, repairInstall, resolveCodex } from "./install.ts";
@@ -58,7 +64,8 @@ export async function run(_args: string[]): Promise<number> {
   if (!installed.ok) console.error(`crank-mem: could not install packages (${installed.detail})`);
   // A build for another clone version, or none, is rebuilt; a failed build
   // costs the dashboard, not the upgrade.
-  if (!dashboardCurrent(path.join(dashboardDir(), "dist"))) {
+  // A user who set up without the dashboard keeps it that way (setup.json, aegis/safety-fixes).
+  if (readSetupProfile().dashboard && !dashboardCurrent(path.join(dashboardDir(), "dist"))) {
     const { error } = setUpDashboard();
     if (error) console.error(error);
   }

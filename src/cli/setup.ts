@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { embed, EMBED_MODEL, modelPresent, modelsDir } from "../daemon/embedder.ts";
 import { errorMessage } from "../hooks/lib/config.ts";
-import { ensureCrankHome } from "../hooks/lib/user-state.ts";
+import { crankHome, ensureCrankHome } from "../hooks/lib/user-state.ts";
 import { parseArgs, positive } from "./args.ts";
 import { COMMANDS } from "./commands.ts";
 import { cliVersion, REPO_ROOT } from "./version.ts";
@@ -24,6 +24,33 @@ export function dashboardCurrent(distDir: string): boolean {
   } catch {
     return false;
   }
+}
+
+// ── Setup profile (aegis/safety-fixes; see ATTRIBUTION.md) ─────────────────────────────────
+// `setup` can leave out the dashboard and the search model (`--core`, `--skip-dashboard`,
+// `--skip-model`), so a one-command install can stay small. The choice is kept per user in
+// <crank home>/setup.json so that `upgrade` does not rebuild a dashboard nobody asked for. A
+// missing or unreadable file means the pre-existing behaviour: both parts on.
+
+export const SETUP_PROFILE_FILE = "setup.json";
+export type SetupProfile = { dashboard: boolean; model: boolean };
+
+export function readSetupProfile(): SetupProfile {
+  try {
+    const raw: unknown = JSON.parse(
+      fs.readFileSync(path.join(crankHome(), SETUP_PROFILE_FILE), "utf-8"),
+    );
+    if (typeof raw === "object" && raw !== null) {
+      const r = raw as Record<string, unknown>;
+      return { dashboard: r.dashboard !== false, model: r.model !== false };
+    }
+  } catch {}
+  return { dashboard: true, model: true };
+}
+
+function writeSetupProfile(profile: SetupProfile): void {
+  const home = ensureCrankHome();
+  fs.writeFileSync(path.join(home, SETUP_PROFILE_FILE), JSON.stringify(profile, null, 2) + "\n");
 }
 
 export type InstallResult = { ok: true; tool: "bun" | "npm" } | { ok: false; detail: string };
@@ -98,6 +125,11 @@ export async function run(args: string[]): Promise<number> {
   const { flags } = parseArgs(args, COMMANDS.setup.value);
   const host = typeof flags["model-host"] === "string" ? flags["model-host"] : undefined;
   const fetchTimeoutMs = positive(flags["fetch-timeout-ms"], 0) || undefined;
+  const core = flags.core === true;
+  const profile: SetupProfile = {
+    dashboard: !(core || flags["skip-dashboard"] === true),
+    model: !(core || flags["skip-model"] === true),
+  };
 
   const installed = installPackages(REPO_ROOT);
   if (!installed.ok) {
@@ -105,18 +137,29 @@ export async function run(args: string[]): Promise<number> {
     return 1;
   }
   console.log(`crank-mem: installed packages with ${installed.tool}`);
+  writeSetupProfile(profile);
 
-  const dashboard = setUpDashboard();
-  if (dashboard.installedWith) {
-    console.log(`crank-mem: installed dashboard packages with ${dashboard.installedWith}`);
+  if (!profile.dashboard) {
+    console.log("crank-mem: skipped the dashboard (run `crank-mem setup` to add it)");
+  } else {
+    const dashboard = setUpDashboard();
+    if (dashboard.installedWith) {
+      console.log(`crank-mem: installed dashboard packages with ${dashboard.installedWith}`);
+    }
+    if (dashboard.error) {
+      console.error(dashboard.error);
+      return 1;
+    }
+    console.log("crank-mem: built the dashboard");
   }
-  if (dashboard.error) {
-    console.error(dashboard.error);
-    return 1;
-  }
-  console.log("crank-mem: built the dashboard");
 
   ensureCrankHome();
+  if (!profile.model) {
+    console.log(
+      "crank-mem: skipped the search model; search falls back to keywords (run `crank-mem setup` to add it)",
+    );
+    return 0;
+  }
   const dir = modelsDir();
   if (modelPresent()) {
     console.log(`crank-mem: model already in ${dir}`);

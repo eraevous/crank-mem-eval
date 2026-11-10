@@ -231,6 +231,54 @@ function initedProject(): string {
   return root;
 }
 
+// ── Setup profiles (aegis/safety-fixes; see ATTRIBUTION.md) ─────────────────────────────────
+describe("setup --core", () => {
+  test("installs packages only, records the profile, and upgrade then leaves the dashboard unbuilt", () => {
+    const home = makeCrankHome();
+    const dash = emptyDashboard();
+    const bun = fakeTool("bun", 0);
+    const env = {
+      CRANK_HOME: home,
+      CRANK_DASHBOARD_DIR: dash.dir,
+      PATH: `${bun.dir}:${process.env.PATH}`,
+    };
+    const run = runCli(os.tmpdir(), ["setup", "--core"], env);
+    expect(run.status).toBe(0);
+    expect(bun.calls()).toEqual([{ argv: "install --frozen-lockfile", cwd: ROOT_REAL }]);
+    expect(run.stdout).toContain("skipped the dashboard");
+    expect(run.stdout).toContain("skipped the search model");
+    expect(JSON.parse(fs.readFileSync(path.join(home, "setup.json"), "utf-8"))).toEqual({
+      dashboard: false,
+      model: false,
+    });
+    expect(dash.stamp()).toBeNull();
+
+    const root = initedProject();
+    const up = runCli(root, ["upgrade"], env);
+    expect(up.status).toBe(0);
+    expect(bun.calls().filter((c) => c.cwd === dash.real)).toEqual([]);
+    expect(dash.stamp()).toBeNull();
+  });
+
+  test("--skip-model builds the dashboard and skips only the model", () => {
+    const home = makeCrankHome();
+    const dash = emptyDashboard();
+    const bun = fakeTool("bun", 0);
+    const run = runCli(os.tmpdir(), ["setup", "--skip-model"], {
+      CRANK_HOME: home,
+      CRANK_DASHBOARD_DIR: dash.dir,
+      PATH: `${bun.dir}:${process.env.PATH}`,
+    });
+    expect(run.status).toBe(0);
+    expect(bun.calls().some((c) => c.cwd === dash.real)).toBe(true);
+    expect(run.stdout).toContain("skipped the search model");
+    expect(JSON.parse(fs.readFileSync(path.join(home, "setup.json"), "utf-8"))).toEqual({
+      dashboard: true,
+      model: false,
+    });
+  });
+});
+
 describe("upgrade installs packages", () => {
   test("at the current version with a current dashboard it runs only the root install", () => {
     const root = initedProject();
