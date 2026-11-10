@@ -821,8 +821,10 @@ test("a failing first scan stops init before wiring anything", () => {
   );
   expect(run.status).toBe(1);
   expect(run.stderr).toContain("crank-mem: EISDIR");
-  expect(run.stderr).toContain("init failed before wiring anything — delete .crank/ and retry.\n");
+  // proposed-changes: the journal records the unfinished init, and one hint covers both cases.
+  expect(run.stderr).toContain("crank-mem init --rollback");
   expect(fs.existsSync(configPath(root))).toBe(false);
+  expect(fs.existsSync(path.join(root, ".crank/install-journal.json"))).toBe(true);
   expect(snapshot(root)).toEqual(before);
   expect(fs.readFileSync(exclude).equals(excludeBefore)).toBe(true);
 });
@@ -847,7 +849,8 @@ test("a failing item stops init partway", () => {
   expect(run.stdout).toBe("");
   expect(run.stderr).toContain("crank-mem: EISDIR");
   expect(run.stderr).toContain(
-    "init failed partway — run `crank-mem uninstall --restore` to roll back.",
+    // proposed-changes: the journal-based recovery replaces the uninstall hint.
+    "init failed partway — run `crank-mem init --rollback` to undo it, or fix the cause and run `crank-mem init --resume`.",
   );
   expect(fs.existsSync(path.join(root, ".codex/hooks.json"))).toBe(false);
   expect(fs.readFileSync(exclude).equals(excludeBefore)).toBe(true);
