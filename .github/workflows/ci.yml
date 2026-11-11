@@ -11,8 +11,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # The digest and daemon tests expect TMPDIR among the variables passed to claude;
+      # macOS always sets it, GitHub's Linux runners don't.
+      TMPDIR: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tests/installer.test.ts installs the parent commit (--ref), which a shallow clone lacks
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
