@@ -8,8 +8,8 @@ import { REPO_ROOT } from "./helpers.ts";
 // The Telosmith PostToolUse hook in .claude/settings.json runs `python3 ... -m aec` after
 // cd-ing into the project. Python puts the current directory first on the import path, so a
 // branch that adds its own aec.py or aec/__main__.py would run as the developer (Codex
-// security review on PR #7). The hook uses `python3 -P` (3.11+) so the checkout is never
-// importable. This test plants a shadow aec package that writes a marker and checks the
+// security review on PR #7). The hook's `aec` shell function drops the checkout from sys.path
+// before running the module (any Python 3.10+), so the checkout is never importable. This test plants a shadow aec package that writes a marker and checks the
 // hook never runs it. It needs no Telosmith installed: with or without one, the shadow
 // module must not execute.
 
@@ -40,8 +40,8 @@ test("the Telosmith hook never imports an aec module from the checkout", () => {
   }
 });
 
-test("every aec call in the hook runs with python3 -P", () => {
+test("every aec call in the hook goes through the safe launcher", () => {
   const command = hookCommand();
-  expect(command).not.toMatch(/python3 -m aec/);
-  expect((command.match(/python3 -P -m aec/g) ?? []).length).toBeGreaterThan(0);
+  expect(command).not.toMatch(/-m aec/);
+  expect(command).toContain("runpy.run_module");
 });
