@@ -9,4 +9,4 @@ jobs:
     uses: eraevous/Lydian/.github/workflows/kairos-checks.yml@main
     with:
       suite: kairos-records-v1
-      kit_ref: main   # keep equal to the @ref above
+      kit_ref: main # keep equal to the @ref above
