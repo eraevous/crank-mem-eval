@@ -11,10 +11,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      # The digest and daemon tests expect TMPDIR among the variables passed to claude;
-      # macOS always sets it, GitHub's Linux runners don't.
-      TMPDIR: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,3 +25,8 @@ jobs:
       # The suite reads the real local search model; setup downloads it into ~/.crank.
       - run: bun src/cli/main.ts setup --skip-dashboard
       - run: bun test --timeout 20000
+        env:
+          # The digest and daemon tests expect TMPDIR among the variables passed to claude;
+          # macOS always sets it, GitHub's Linux runners don't. (runner.temp is only
+          # available at step level, not in job-level env.)
+          TMPDIR: ${{ runner.temp }}
