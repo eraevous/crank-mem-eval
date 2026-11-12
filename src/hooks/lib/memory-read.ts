@@ -1,5 +1,12 @@
 import type * as sqlite from "node:sqlite";
-import type { DigestSummary, Memory, PendingWork, Position, SearchQuery } from "./memory.ts";
+import type {
+  ActivityEvents,
+  DigestSummary,
+  Memory,
+  PendingWork,
+  Position,
+  SearchQuery,
+} from "./memory.ts";
 import type {
   ConsolidationOutcome,
   ConsolidationRow,
@@ -17,7 +24,7 @@ import type {
 type Row = Record<string, unknown>;
 
 export const LINE_COLUMNS = "o.id, o.created_at, o.type, o.title, o.stale_at";
-const NEWEST_FIRST = "ORDER BY o.created_at DESC, o.id DESC";
+export const NEWEST_FIRST = "ORDER BY o.created_at DESC, o.id DESC";
 const UNEMBEDDED =
   "NOT EXISTS (SELECT 1 FROM observation_vectors v WHERE v.observation_id = o.id AND v.model = ?)";
 
@@ -340,4 +347,24 @@ export function consolidationRows(
     model: row.model === null ? null : String(row.model),
     costUsd: Number(row.cost_usd),
   }));
+}
+
+export function activity(db: sqlite.DatabaseSync, sinceMs: number): ActivityEvents {
+  const priced = (sql: string) =>
+    all(db, sql, sinceMs).map((r) => ({ atMs: Number(r.at), costUsd: Number(r.cost) }));
+  const times = (sql: string) => all(db, sql, sinceMs).map((r) => Number(r.at));
+  return {
+    digests: priced("SELECT created_at AS at, cost_usd AS cost FROM digests WHERE created_at >= ?"),
+    observations: times("SELECT created_at AS at FROM observations WHERE created_at >= ?"),
+    consolidations: priced(
+      "SELECT started_at AS at, cost_usd AS cost FROM consolidations WHERE started_at >= ?",
+    ),
+    decisions: all(
+      db,
+      `SELECT decided_at AS at, state FROM proposals
+         WHERE decided_at >= ? AND state IN ('accepted', 'rejected')`,
+      sinceMs,
+    ).map((r) => ({ atMs: Number(r.at), state: r.state as "accepted" | "rejected" })),
+    staleFlags: times("SELECT stale_at AS at FROM observations WHERE stale_at >= ?"),
+  };
 }

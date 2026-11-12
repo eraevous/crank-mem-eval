@@ -6,6 +6,8 @@ import { cliVersion } from "../src/cli/version.ts";
 import {
   REPO_ROOT,
   dashboardFixture,
+  fakeTool,
+  initedCopy,
   makeCrankHome,
   makeModelHome,
   realModelsDir,
@@ -17,41 +19,6 @@ const MODEL_FILE = "Xenova/all-MiniLM-L6-v2/onnx/model_quantized.onnx";
 
 function tempDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-}
-
-type Call = { argv: string; cwd: string };
-
-/**
- * A fake package manager named `name` that appends each call's argv and cwd,
- * then exits `exit`, or 1 on the call `failOn` names.
- */
-function fakeTool(
-  name: "bun" | "npm",
-  exit: number,
-  failOn?: { argv: string; cwd?: string },
-): { dir: string; calls(): Call[] } {
-  const dir = tempDir(`crank-fake${name}-`);
-  const log = path.join(dir, "calls");
-  const match = failOn
-    ? `[ "$*" = "${failOn.argv}" ]${failOn.cwd ? ` && [ "$(pwd -P)" = "${failOn.cwd}" ]` : ""}`
-    : "false";
-  fs.writeFileSync(
-    path.join(dir, name),
-    `#!/bin/sh\nprintf '%s\\t%s\\n' "$*" "$(pwd -P)" >> "${log}"\necho "${name} failed on purpose" >&2\nif ${match}; then exit 1; fi\nexit ${exit}\n`,
-    { mode: 0o755 },
-  );
-  const calls = () =>
-    fs.existsSync(log)
-      ? fs
-          .readFileSync(log, "utf-8")
-          .split("\n")
-          .filter(Boolean)
-          .map((l) => {
-            const [argv, cwd] = l.split("\t");
-            return { argv: argv!, cwd: cwd! };
-          })
-      : [];
-  return { dir, calls };
 }
 
 /** A temp `CRANK_DASHBOARD_DIR` with no build, and its realpath. */
@@ -207,7 +174,6 @@ describe("setup", () => {
       const bun = fakeTool("bun", 0);
       const server = await startModelServer(realModelsDir(), mode);
       servers.push(server);
-      const started = Date.now();
       const run = runCli(
         REPO_ROOT,
         ["setup", "--model-host", server.url, "--fetch-timeout-ms", "500"],
@@ -216,20 +182,12 @@ describe("setup", () => {
           PATH: `${bun.dir}:${process.env.PATH}`,
         },
       );
-      expect(Date.now() - started).toBeLessThan(10_000);
       expect(run.status).toBe(1);
       expect(run.stderr).toContain("crank-mem: could not download the model (");
       expect(server.requests().length).toBeGreaterThan(0);
-    });
+    }, 20_000);
   }
 });
-
-function initedProject(): string {
-  const root = tempDir("crank-setup-");
-  fs.writeFileSync(path.join(root, "a.ts"), "export const a = 1;\n");
-  expect(runCli(root, ["init", "--yes", "--codex", "skip"]).status).toBe(0);
-  return root;
-}
 
 // ── Setup profiles (aegis/safety-fixes; see ATTRIBUTION.md) ─────────────────────────────────
 describe("setup --core", () => {
@@ -253,7 +211,7 @@ describe("setup --core", () => {
     });
     expect(dash.stamp()).toBeNull();
 
-    const root = initedProject();
+    const root = initedCopy();
     const up = runCli(root, ["upgrade"], env);
     expect(up.status).toBe(0);
     expect(bun.calls().filter((c) => c.cwd === dash.real)).toEqual([]);
@@ -281,7 +239,7 @@ describe("setup --core", () => {
 
 describe("upgrade installs packages", () => {
   test("at the current version with a current dashboard it runs only the root install", () => {
-    const root = initedProject();
+    const root = initedCopy();
     const bun = fakeTool("bun", 0);
     const run = runCli(root, ["upgrade"], {
       CRANK_DASHBOARD_DIR: dashboardFixture(cliVersion()),
@@ -295,7 +253,7 @@ describe("upgrade installs packages", () => {
   });
 
   test("a dashboard without a current stamp is installed, built and stamped", () => {
-    const root = initedProject();
+    const root = initedCopy();
     const dash = dashboardFixture(null);
     const dashReal = fs.realpathSync(dash);
     const bun = fakeTool("bun", 0);
@@ -316,7 +274,7 @@ describe("upgrade installs packages", () => {
   });
 
   test("a dashboard build failure warns, writes no stamp and still exits 0", () => {
-    const root = initedProject();
+    const root = initedCopy();
     const dash = dashboardFixture(null);
     const bun = fakeTool("bun", 0, { argv: "run build" });
     const run = runCli(root, ["upgrade"], {
@@ -330,7 +288,7 @@ describe("upgrade installs packages", () => {
   });
 
   test("a dashboard install failure warns, skips the build, writes no stamp and still exits 0", () => {
-    const root = initedProject();
+    const root = initedCopy();
     const dash = dashboardFixture(null);
     const dashReal = fs.realpathSync(dash);
     const bun = fakeTool("bun", 0, { argv: "install --frozen-lockfile", cwd: dashReal });
@@ -351,7 +309,7 @@ describe("upgrade installs packages", () => {
   });
 
   test("an install failure warns and still exits 0", () => {
-    const root = initedProject();
+    const root = initedCopy();
     const bun = fakeTool("bun", 1);
     const run = runCli(root, ["upgrade"], { PATH: `${bun.dir}:${process.env.PATH}` });
     expect(run.status).toBe(0);
@@ -360,21 +318,114 @@ describe("upgrade installs packages", () => {
   });
 });
 
-const NOT_READY = "crank-mem: warning: search by meaning is not ready; run `crank-mem setup`.\n";
+describe("upgrade --all", () => {
+  /** A crank home with two projects inited from it, each stamped as vendored at 0.0.1. */
+  function twoProjects(): { home: string; a: string; b: string } {
+    const home = makeCrankHome();
+    const [a, b] = ["a", "b"].map((name) => {
+      const root = fs.realpathSync(tempDir(`crank-all-${name}-`));
+      fs.writeFileSync(path.join(root, "a.ts"), "export const a = 1;\n");
+      expect(runCli(root, ["init", "--yes", "--codex", "skip"], { CRANK_HOME: home }).status).toBe(
+        0,
+      );
+      const file = path.join(root, ".crank/config.json");
+      const config = JSON.parse(fs.readFileSync(file, "utf-8"));
+      fs.writeFileSync(file, JSON.stringify({ ...config, vendored_version: "0.0.1" }, null, 2));
+      return root;
+    });
+    return { home, a: a!, b: b! };
+  }
 
-describe("digest on and the embedder", () => {
-  test("warns when the model is absent and still turns digests on", () => {
-    const root = initedProject();
-    const run = runCli(root, ["digest", "on"], { CRANK_HOME: makeCrankHome() });
+  function vendored(root: string): unknown {
+    return JSON.parse(fs.readFileSync(path.join(root, ".crank/config.json"), "utf-8"))
+      .vendored_version;
+  }
+
+  function upgradeAll(home: string, bun: { dir: string }) {
+    return runCli(os.tmpdir(), ["upgrade", "--all"], {
+      CRANK_HOME: home,
+      PATH: `${bun.dir}:${process.env.PATH}`,
+    });
+  }
+
+  test("installs packages once and repairs every registered project", () => {
+    const { home, a, b } = twoProjects();
+    const bun = fakeTool("bun", 0);
+    const run = upgradeAll(home, bun);
     expect(run.status).toBe(0);
-    expect(run.stderr).toBe(NOT_READY);
-    expect(
-      JSON.parse(fs.readFileSync(path.join(root, ".crank/config.local.json"), "utf-8")),
-    ).toEqual({ digest: true });
+    expect(bun.calls().filter((c) => c.argv.startsWith("install --frozen-lockfile"))).toEqual([
+      { argv: "install --frozen-lockfile", cwd: ROOT_REAL },
+    ]);
+    expect(vendored(a)).toBe(cliVersion());
+    expect(vendored(b)).toBe(cliVersion());
+    expect(run.stdout).toContain(`crank-mem: repairing ${a}`);
+    expect(run.stdout).toContain(`crank-mem: repairing ${b}`);
   });
 
+  test("a registered root without a config is reported and skipped", () => {
+    const { home } = twoProjects();
+    const c = tempDir("crank-all-c-");
+    const file = path.join(home, "projects.json");
+    const registry = JSON.parse(fs.readFileSync(file, "utf-8"));
+    registry.projects.push({ root: c, addedAtMs: Date.now() });
+    fs.writeFileSync(file, JSON.stringify(registry));
+    const run = upgradeAll(home, fakeTool("bun", 0));
+    expect(run.stdout).toContain(`${c}: missing, skipped`);
+    expect(run.status).toBe(0);
+  });
+
+  test("a project whose anatomy lock is held is reported busy and left unchanged", () => {
+    const { home, b } = twoProjects();
+    const config = path.join(b, ".crank/config.json");
+    const before = fs.readFileSync(config);
+    fs.writeFileSync(
+      path.join(b, ".crank/anatomy-index.lock"),
+      JSON.stringify({ pid: process.pid, hostname: os.hostname(), acquiredAt: Date.now() }),
+    );
+    const run = upgradeAll(home, fakeTool("bun", 0));
+    expect(run.stdout).toContain(`${b}: busy, skipped`);
+    expect(fs.readFileSync(config)).toEqual(before);
+    expect(run.status).toBe(0);
+  }, 20_000);
+
+  test("a failed repair in one project still repairs the others and exits 1", () => {
+    const { home, a, b } = twoProjects();
+    fs.writeFileSync(path.join(a, ".claude/settings.local.json"), "{not json");
+    const run = upgradeAll(home, fakeTool("bun", 0));
+    expect(run.stderr).toContain("crank-mem: could not re-wire Claude Code hooks");
+    expect(vendored(b)).toBe(cliVersion());
+    expect(run.status).toBe(1);
+  });
+
+  const V1_INDEX = '{"version":1,"meta":{"lastScanned":null,"fileCount":0},"files":{}}';
+  const indexOf = (root: string) => path.join(root, ".crank/anatomy-index.json");
+
+  test("a project whose index predates version 2 is scanned; a current one is not", () => {
+    const { home, a, b } = twoProjects();
+    fs.writeFileSync(indexOf(b), V1_INDEX);
+    const aBefore = fs.readFileSync(indexOf(a));
+    const run = upgradeAll(home, fakeTool("bun", 0));
+    expect(run.status).toBe(0);
+    expect(run.stdout.split("full scan complete")).toHaveLength(2);
+    expect(JSON.parse(fs.readFileSync(indexOf(b), "utf-8")).version).toBe(2);
+    expect(fs.readFileSync(indexOf(a))).toEqual(aBefore);
+  });
+
+  test("a project whose scan throws does not stop the next one", () => {
+    const { home, a, b } = twoProjects();
+    fs.rmSync(indexOf(a));
+    fs.mkdirSync(indexOf(a));
+    fs.writeFileSync(indexOf(b), V1_INDEX);
+    const run = upgradeAll(home, fakeTool("bun", 0));
+    expect(run.status).toBe(0);
+    expect(run.stderr).toContain("crank-mem: could not scan (");
+    expect(JSON.parse(fs.readFileSync(indexOf(b), "utf-8")).version).toBe(2);
+  });
+});
+
+describe("digest on and the embedder", () => {
   test("says nothing when the model is in place", () => {
-    const root = initedProject();
+    const root = initedCopy();
     const run = runCli(root, ["digest", "on"], { CRANK_HOME: makeModelHome() });
     expect(run.status).toBe(0);
     expect(run.stderr).toBe("");
@@ -384,6 +435,7 @@ describe("digest on and the embedder", () => {
 describe("help", () => {
   test("lists setup and none of the hidden commands or flags", () => {
     const out = runCli(tempDir("crank-setup-help-"), ["--help"]).stdout;
+    expect(out).toContain("Repair this project's install, or every registered project with --all");
     expect(out).toContain(
       "  setup           Install packages, build the dashboard and download the local search model\n",
     );

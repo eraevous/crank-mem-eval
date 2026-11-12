@@ -1,9 +1,14 @@
-import { localDate } from "../hooks/lib/memory.ts";
+import { localDate, type ActivityEvents } from "../hooks/lib/memory.ts";
 import type { UsageLine } from "../hooks/lib/usage.ts";
-import { USAGE_CHANNELS, type UsageChannel, type UsageMetrics } from "../hooks/lib/wire.ts";
+import {
+  USAGE_CHANNELS,
+  type ActivityDay,
+  type UsageChannel,
+  type UsageMetrics,
+} from "../hooks/lib/wire.ts";
 
-// The Usage view's numbers, computed from a store's usage lines over a window
-// of whole local days that ends today.
+// The Usage view's numbers from a store's usage lines, and the store's daily
+// upkeep from its own rows, each over a window of whole local days that ends today.
 
 /** The longest list the metrics answer. */
 const TOP = 50;
@@ -49,12 +54,16 @@ function shownIds(line: UsageLine): Set<number> {
   }
 }
 
+/** The ids a get or timeline line opened: a get's requested ids, a timeline's anchor. */
+function openedIds(line: UsageLine): number[] {
+  if (line.channel === "get") return line.requested;
+  if (line.channel === "timeline") return [line.anchor];
+  return [];
+}
+
 /** Whether `later` opens one of `search`'s result ids in its session. */
 function opens(search: Line<"search">, later: UsageLine): boolean {
-  if (later.session !== search.session) return false;
-  if (later.channel === "get") return later.requested.some((id) => search.ids.includes(id));
-  if (later.channel === "timeline") return search.ids.includes(later.anchor);
-  return false;
+  return later.session === search.session && openedIds(later).some((id) => search.ids.includes(id));
 }
 
 /** Whether a line after `lines[i]`, a search, opens one of its ids within FOLLOW_MS. */
@@ -79,14 +88,29 @@ function ofChannel<C extends UsageChannel>(lines: UsageLine[], channel: C): Line
   return lines.filter((l): l is Line<C> => l.channel === channel);
 }
 
+/** The local midnight that starts a window of `days` whole local days ending today. */
+export function windowStart(nowMs: number, days: number): Date {
+  const start = new Date(nowMs);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - (days - 1));
+  return start;
+}
+
+/** The window's local dates, oldest first. */
+function windowDates(start: Date, days: number): string[] {
+  return Array.from({ length: days }, (_, i) => {
+    const day = new Date(start);
+    day.setDate(start.getDate() + i);
+    return localDate(day.getTime());
+  });
+}
+
 /** The window's first local midnight, and its lines in time order. */
 function windowLines(
   events: UsageLine[],
   opts: MetricsOptions,
 ): { start: Date; lines: UsageLine[] } {
-  const start = new Date(opts.nowMs);
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - (opts.days - 1));
+  const start = windowStart(opts.nowMs, opts.days);
   const lines = events
     .filter((e) => e.ts >= start.getTime() && (opts.manual || e.agent !== "manual"))
     .sort((a, b) => a.ts - b.ts);
@@ -97,10 +121,8 @@ function windowLines(
 function perDayGrid(lines: UsageLine[], start: Date, days: number): UsageMetrics["perDay"] {
   const perDay: UsageMetrics["perDay"] = [];
   const byDate = new Map<string, Record<UsageChannel, number>>();
-  for (let i = 0; i < days; i++) {
-    const day = new Date(start);
-    day.setDate(start.getDate() + i);
-    const entry = { date: localDate(day.getTime()), counts: zeroCounts() };
+  for (const date of windowDates(start, days)) {
+    const entry = { date, counts: zeroCounts() };
     perDay.push(entry);
     byDate.set(entry.date, entry.counts);
   }
@@ -121,6 +143,49 @@ function followThrough(lines: UsageLine[]): number | null {
     if (followedThrough(lines, i)) followed++;
   });
   return share(followed, followable);
+}
+
+/** The share of Claude sessions with a session start that ran a search, timeline or get. */
+function recallReach(lines: UsageLine[]): number | null {
+  const started = new Set<string>();
+  for (const l of ofChannel(lines, "session-start")) {
+    if (l.agent === "claude" && l.session !== null) started.add(l.session);
+  }
+  const recalled = new Set<string>();
+  for (const l of lines) {
+    const recall = l.channel === "search" || l.channel === "timeline" || l.channel === "get";
+    if (recall && l.agent === "claude" && l.session !== null && started.has(l.session)) {
+      recalled.add(l.session);
+    }
+  }
+  return share(recalled.size, started.size);
+}
+
+/** The share of distinct (session, id) pairs surfaced to a Claude session that a later get or timeline in it opened. */
+function surfacedFollowThrough(lines: UsageLine[]): number | null {
+  const surfaced = new Map<string, Set<number>>();
+  const opened = new Map<string, Set<number>>();
+  const add = (map: Map<string, Set<number>>, session: string, id: number) => {
+    const ids = map.get(session);
+    if (ids) ids.add(id);
+    else map.set(session, new Set([id]));
+  };
+  for (const l of lines) {
+    if (l.agent !== "claude" || l.session === null) continue;
+    for (const id of openedIds(l)) {
+      if (surfaced.get(l.session)?.has(id)) add(opened, l.session, id);
+    }
+    const shown =
+      l.channel === "session-start"
+        ? l.ids
+        : l.channel === "file-history"
+          ? l.shown.flatMap((s) => s.ids)
+          : [];
+    for (const id of shown) add(surfaced, l.session, id);
+  }
+  const total = (map: Map<string, Set<number>>) =>
+    [...map.values()].reduce((n, ids) => n + ids.size, 0);
+  return share(total(opened), total(surfaced));
 }
 
 /** Searches grouped by normalized query, most run first. */
@@ -188,9 +253,38 @@ export function usageMetrics(events: UsageLine[], opts: MetricsOptions): UsageMe
     zeroResultShare: share(searches.filter((s) => s.ids.length === 0).length, searches.length),
     keywordShare: share(searches.filter((s) => s.mode === "keyword").length, searches.length),
     followThrough: followed,
+    recallReach: recallReach(lines),
+    surfacedFollowThrough: surfacedFollowThrough(lines),
     topQueries: queries,
     surfaced,
     neverSurfacedShare: share(opts.observationCount - titles.size, opts.observationCount),
     filesWithoutMemory: emptyFiles,
   };
+}
+
+/** One `ActivityDay` per local day of the window starting at `start`, from the store's upkeep events. */
+export function activityDays(events: ActivityEvents, start: Date, days: number): ActivityDay[] {
+  const grid = windowDates(start, days).map((date): ActivityDay => ({
+    date,
+    digests: 0,
+    observations: 0,
+    costUsd: 0,
+    consolidations: 0,
+    accepted: 0,
+    rejected: 0,
+    staleFlags: 0,
+  }));
+  const byDate = new Map(grid.map((day) => [day.date, day]));
+  const count = (ms: number, key: Exclude<keyof ActivityDay, "date">, costUsd = 0) => {
+    const day = byDate.get(localDate(ms));
+    if (day === undefined) return;
+    day[key]++;
+    day.costUsd += costUsd;
+  };
+  for (const d of events.digests) count(d.atMs, "digests", d.costUsd);
+  for (const c of events.consolidations) count(c.atMs, "consolidations", c.costUsd);
+  for (const ms of events.observations) count(ms, "observations");
+  for (const ms of events.staleFlags) count(ms, "staleFlags");
+  for (const d of events.decisions) count(d.atMs, d.state);
+  return grid;
 }

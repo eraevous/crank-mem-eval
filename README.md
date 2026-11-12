@@ -4,7 +4,8 @@
 > [ChrisLiva/crank-mem](https://github.com/ChrisLiva/crank-mem).
 >
 > This repository is an evaluation copy. It adds safety fixes, an installer, `doctor` and
-> safely re-runnable setup on top of his v0.11.0, offered back to him to use on his terms.
+> safely re-runnable setup on top of his v0.11.0, and has since merged his v0.13.1. It is now
+> its own line and need not stay compatible with his.
 > The install command below installs this copy; the by-hand steps work with either.
 > [`ATTRIBUTION.md`](ATTRIBUTION.md) lists exactly what changed. Everything else, the design
 > and nearly all of the code, is his.
@@ -26,7 +27,9 @@ cite, and keeps `cerebrum.md`.
 
 No hook asks the agent to keep memory. Hooks are advisory-only: they always exit 0.
 
-## Install
+## For users
+
+### Install
 
 One command, per user, no sudo. Read the script first: it is short, and it says what it touches.
 
@@ -86,7 +89,7 @@ Hooks import only `node:` modules. Three packages load only when a command needs
 ### Upgrading
 
 With a by-hand clone, upgrading is `git pull` in the clone, then `crank-mem upgrade` in each
-project. Upgrade brings every item back to the choices init recorded in `.crank/config.json`:
+project, or `crank-mem upgrade --all` for every project in `~/.crank/projects.json`. Upgrade brings every item back to the choices init recorded in `.crank/config.json`:
 
 - **Hooks:**
   - It re-vendors the hooks copied into `.crank/hooks/` whenever they differ from the clone.
@@ -126,7 +129,7 @@ Codex hashes each hook command for its trust check. So the first upgrade that re
 commands makes Codex ask once for a hooks review: open codex in the project and accept it. An
 install made with `--codex-trust write` skips that, because upgrade recomputes the trusted hashes.
 
-## Commands
+### Commands
 
 - `crank-mem init` sets up the project. It wires hooks into `.claude` and `.codex`, seeds
   `.crank/` and runs the first scan.
@@ -198,9 +201,14 @@ install made with `--codex-trust write` skips that, because upgrade recomputes t
   - `--port <n>` picks the port (default `38700` plus your uid mod 100), and `--no-open` skips the
     browser.
   - It refuses until `setup` has built the dashboard.
-- `crank-mem upgrade` brings a project up to the clone after a `git pull` or an install (see
-  Upgrading). It also adds the project to `~/.crank/projects.json`, the registry the dashboard
-  shows.
+- `crank-mem upgrade [--all]` brings a project up to the clone after a `git pull` or an install
+  (see Upgrading). It also adds the project to `~/.crank/projects.json`, the registry the
+  dashboard shows. `--all` repairs every project in that list, skipping a missing root and a
+  project whose anatomy lock is held.
+- `crank-mem self-update`, `rollback`, `self-install` and `self-uninstall` manage an installed
+  release copy under `~/.crank/versions/` (from Chris Liva's v0.13; see ATTRIBUTION.md). This line
+  publishes no releases yet and installs with `install.sh` from a clone, where these commands
+  refuse to run; they stay for when it does.
 - `crank-mem uninstall` removes all wiring, and offers to restore backups.
   - `--restore` puts each project file crank-mem changed back as it was before crank-mem first
     changed it, and deletes the files crank-mem created. Files outside the project, such as
@@ -211,7 +219,7 @@ install made with `--codex-trust write` skips that, because upgrade recomputes t
   - It exits 1, naming the file, when it cannot remove crank-mem's entries from a file: one that
     is not valid JSON, or one it cannot read or write.
 
-## Layout under `.crank/`
+### Layout under `.crank/`
 
 - `anatomy-index.json`: the anatomy, as data.
 - `anatomy.md`: the same anatomy, for people and agents to read.
@@ -248,7 +256,7 @@ Per-user state lives in `~/.crank` (or `$CRANK_HOME`). That covers:
 - `dashboard.json` and `projects.json`
 - `setup.json`, which records the parts `setup` left out
 
-## Subagents
+### Subagents
 
 Claude Code fires `SessionStart` only in the main session, so crank-mem wires `SubagentStart`
 too. Each `general-purpose`, `Explore`, `Plan` and `workflow-subagent` subagent gets:
@@ -261,7 +269,7 @@ too. Each `general-purpose`, `Explore`, `Plan` and `workflow-subagent` subagent 
 
 Custom and plugin agents get nothing. The parent session does not see it. See ADR 0007.
 
-## Digests
+### Digests
 
 `crank-mem digest on` turns digests on for one checkout of a project. It writes the switch to the
 gitignored `.crank/config.local.json`, so a teammate's checkout or a linked worktree stays off
@@ -326,7 +334,7 @@ It redacts each file and sends line-numbered evidence, capped at 400 lines a fil
 characters in all.
 
 **The run.** A second `claude -p` run checks the work against that evidence only. It has no tools
-and the same lockdown as a digest (ADR 0013).
+and the same lockdown as a digest (ADR 0015).
 - A memory proposal none of whose cited files is in the evidence is rejected as unverifiable,
   whatever the model answers.
 - Otherwise the model accepts or rejects each proposal, confirms or clears each flag, and edits
@@ -343,7 +351,7 @@ the newest 7 daily snapshots. `crank-mem restore-memory` puts one back.
 The same daily pass deletes observations flagged stale more than 90 days ago. So a flag left
 standing for 90 days ends that observation's retention.
 
-## What gets indexed
+### What gets indexed
 
 Inside a git repository, the file list comes from `git ls-files -co --exclude-standard`, run from
 the project root. So gitignored files stay out. That includes files the enclosing repository
@@ -374,7 +382,7 @@ Source code comes next. Anything under `deps_src`, `third_party`, `vendor`, `ext
 **The cap.** When it cuts files, the session-start injection says so and, in git, gives the
 indexed count against the total. `crank-mem stats` counts every indexable file without the cap.
 
-## Audit skill
+### Audit skill
 
 A bundled agent skill, `crank-mem-audit`, reconciles memory with reality:
 
@@ -401,7 +409,7 @@ Invocation is user-only: `/crank-mem-audit` in Claude Code, `$crank-mem-audit` i
 is dated by its backup directory under `.crank/backups/`: the one that holds only copies of the
 memory files, `cerebrum.md`, `journal.md` and `cerebrum-archive.md`.
 
-## Debugging
+### Debugging
 
 Start with `crank-mem doctor`. It checks the install and the project without writing anything.
 
@@ -436,3 +444,33 @@ contains sensitive paths, and it can never fail a session: a write error is swal
 other advisory failure.
 
 See `docs/adr/` for the probe-verified agent behavior this design rests on.
+
+## For development
+
+### Checks
+
+- `bun test` — the whole suite; it needs `crank-mem setup` run once on the
+  machine, since some tests read the real search model and the
+  `dashboard/node_modules` it installs
+- `bun run typecheck` — `tsc` over the CLI and the dashboard
+- `bun run format:check` — oxfmt; `bun run format` rewrites
+
+Run the full suite as `caffeinate -i bun run test`: four parallel workers,
+then the `*.serial.test.ts` files. `docs/testing-load.md` holds the baseline
+and how to read a timeout under load.
+
+### Dashboard build
+
+The page is a Vite + React package in `dashboard/`, the one built part.
+`cd dashboard && bun run build` empties `dashboard/dist/` and drops its
+`.crank-version` stamp, so `crank-mem dashboard` refuses until
+`crank-mem setup` or `crank-mem upgrade` restamps it. Hooks import only
+`node:` modules. Three packages each load only when a command needs them:
+`@huggingface/transformers` for search by meaning, and `web-tree-sitter` with
+`@vscode/tree-sitter-wasm` for `outline` and `unfold`.
+
+### Releasing
+
+This line publishes no releases yet. Chris Liva's release path (`scripts/pack-release.ts`,
+`scripts/release.ts`, `scripts/install-release.sh`) is kept but idle; his tag-push workflow is
+not included (see ATTRIBUTION.md).

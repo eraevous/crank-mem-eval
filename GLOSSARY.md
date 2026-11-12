@@ -19,8 +19,16 @@ One working copy of a project, such as a teammate's copy or a linked worktree.
 _Avoid_: Clone, copy, worktree
 
 **Clone**:
-The copy of the crank-mem repository that the crank-mem command runs from.
+The copy of the crank-mem repository made by `git clone` and run from its own directory, used for development.
 _Avoid_: Install, source, checkout
+
+**Installed copy**:
+A release unpacked under `<crank home>/versions/`, run through the `current` link.
+_Avoid_: Install dir, release dir
+
+**Self-update**:
+Replacing the installed copy with the latest release, or the one `--to` names, then repairing every registered project with the new version.
+_Avoid_: Upgrade, update (unqualified)
 
 ### Agents and sessions
 
@@ -71,7 +79,7 @@ _Avoid_: Spike, manual test
 ### Anatomy
 
 **Anatomy**:
-The per-file record of a project: each indexed file's description, token size and symbols with their line ranges.
+The per-file record of a project: each indexed file's description, token size, symbols with their line ranges and the repo files it imports.
 _Avoid_: The index, anatomy index, file map
 
 **Indexable file**:
@@ -246,6 +254,14 @@ _Avoid_: Channel (unqualified), source
 The always-on record of each time project memory reached an agent, one line per use of a usage channel.
 _Avoid_: Analytics, telemetry
 
+**Recall reach**:
+The share of Claude sessions that ran at least one search, timeline or get.
+_Avoid_: Recall rate, adoption
+
+**Surfaced follow-through**:
+The share of observations surfaced to a Claude session that the session later opened with get or timeline.
+_Avoid_: Follow-through, open rate
+
 ### Install
 
 **Wiring**:
@@ -253,23 +269,27 @@ The entries in an agent's settings that make it run crank-mem's hooks.
 _Avoid_: Registration, hook config
 
 **Vendored hooks**:
-The copy of the clone's hooks that a project keeps, so that its hooks run without the clone.
+The copy of the running crank-mem's hooks, from a clone or an installed copy, that a project keeps, so that its hooks run without that crank-mem.
 _Avoid_: Installed hooks, bundled hooks
 
 **Drift**:
-The state of a project whose vendored hooks lag the clone's.
+The state of a project whose vendored hooks lag the crank-mem that installed them, a clone or an installed copy.
 _Avoid_: Stale hooks, version mismatch
 
 **Backup**:
 A copy of a file taken before crank-mem changes it, such as an agent's settings file or the cerebrum.
 _Avoid_: Snapshot, copy
 
+**Upgrade**:
+Repairing one project's install, or every registered project's with `--all`.
+_Avoid_: Update, migrate
+
 **Git mode**:
 The choice made at init of how git treats crank-mem's files in a project: commit, ignore or exclude.
 _Avoid_: Tracking mode
 
 **Registry**:
-The per-user list of projects that the dashboard shows.
+The per-user list of projects that the dashboard shows and that `crank-mem upgrade --all` repairs.
 _Avoid_: Project list, index
 
 **Init journal**:

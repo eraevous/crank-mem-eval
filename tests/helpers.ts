@@ -12,13 +12,18 @@ import {
   type DigestInput,
   type NewObservation,
 } from "../src/hooks/lib/memory.ts";
-import { DAEMON_FILE, type DaemonState } from "../src/hooks/lib/spool.ts";
+import { DAEMON_FILE, type DaemonState, type SpoolEntry } from "../src/hooks/lib/spool.ts";
 import { STOP_FILE } from "../src/hooks/lib/user-state.ts";
 import { EMBED_MODEL, MODEL_FILES } from "../src/daemon/embedder.ts";
 import { cliVersion } from "../src/cli/version.ts";
+import { registerProject } from "../src/hooks/lib/registry.ts";
 import { claudeSessionEnd, claudeStop } from "./fixtures/payloads.ts";
 
 export const REPO_ROOT = path.resolve(import.meta.dir, "..");
+
+// Every child that inherits process.env checks for a release against a closed local port, never
+// GitHub, unless its test passes a release server.
+process.env.CRANK_RELEASE_URL ??= "http://127.0.0.1:9";
 
 /** Create a temp project with .crank/ initialized and some source files. */
 export function makeCrankProject(files: Record<string, string> = {}): string {
@@ -101,6 +106,20 @@ export interface HookRun {
   stderr: string;
 }
 
+/** `TZ` as the test process started, before an in-process zone test sets it to "UTC". */
+const STARTED_TZ = process.env.TZ;
+
+/**
+ * `process.env` plus `extra`, for a child process. When the test process started without `TZ`,
+ * the child gets none unless `extra` names one, so it runs in the system zone after an
+ * in-process zone test left `process.env.TZ` at "UTC".
+ */
+export function childEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, ...extra };
+  if (STARTED_TZ === undefined && extra.TZ === undefined) delete env.TZ;
+  return env;
+}
+
 /** Run a hook script as a child process with the given stdin, like an agent would. */
 export function runHook(
   script: string,
@@ -113,7 +132,7 @@ export function runHook(
     encoding: "utf-8",
     cwd: cwd ?? os.tmpdir(),
     timeout: 15_000,
-    env: env ? { ...process.env, ...env } : process.env,
+    env: childEnv(env),
   });
   return { status: result.status ?? -1, stdout: result.stdout, stderr: result.stderr };
 }
@@ -125,6 +144,20 @@ export function makeCrankHome(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "crank-home-"));
 }
 
+/** Run `fn` with `vars` set in `process.env`, then put each back as it was, unset ones deleted. */
+export function withEnv<T>(vars: Record<string, string>, fn: () => T): T {
+  const saved = Object.keys(vars).map((key) => [key, process.env[key]] as const);
+  Object.assign(process.env, vars);
+  try {
+    return fn();
+  } finally {
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
 /**
  * Run the crank-mem CLI as a child process, with fresh temp CODEX_HOME and CRANK_HOME and a
  * current dashboard fixture as CRANK_DASHBOARD_DIR unless `env` overrides them.
@@ -134,15 +167,134 @@ export function runCli(cwd: string, args: string[], env?: Record<string, string>
     cwd,
     encoding: "utf-8",
     timeout: 30_000,
-    env: {
-      ...process.env,
+    env: childEnv({
       CODEX_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "crank-codexhome-")),
       CRANK_HOME: makeCrankHome(),
-      CRANK_DASHBOARD_DIR: dashboardFixture(cliVersion()),
+      CRANK_DASHBOARD_DIR: sharedDashboardDir(),
       ...env,
-    },
+    }),
   });
   return { status: result.status ?? -1, stdout: result.stdout, stderr: result.stderr };
+}
+
+export type Call = { argv: string; cwd: string };
+
+/**
+ * A fake package manager named `name` that appends each call's argv and cwd,
+ * then exits `exit`, or 1 on the call `failOn` names. With `exit` "runtime" it
+ * exits 0 for `install` and otherwise runs the test's own runtime with its
+ * arguments, so the launcher's `exec bun` still runs the CLI.
+ */
+export function fakeTool(
+  name: "bun" | "npm",
+  exit: number | "runtime",
+  failOn?: { argv: string; cwd?: string },
+): { dir: string; calls(): Call[] } {
+  const dir = tempDir(`crank-fake${name}-`);
+  const log = path.join(dir, "calls");
+  const match = failOn
+    ? `[ "$*" = "${failOn.argv}" ]${failOn.cwd ? ` && [ "$(pwd -P)" = "${failOn.cwd}" ]` : ""}`
+    : "false";
+  const record = `printf '%s\\t%s\\n' "$*" "$(pwd -P)" >> "${log}"`;
+  const body =
+    exit === "runtime"
+      ? `[ "$1" = install ] && exit 0\nexec '${process.execPath}' "$@"`
+      : `echo "${name} failed on purpose" >&2\nif ${match}; then exit 1; fi\nexit ${exit}`;
+  fs.writeFileSync(path.join(dir, name), `#!/bin/sh\n${record}\n${body}\n`, { mode: 0o755 });
+  const calls = () =>
+    fs.existsSync(log)
+      ? fs
+          .readFileSync(log, "utf-8")
+          .split("\n")
+          .filter(Boolean)
+          .map((l) => {
+            const [argv, cwd] = l.split("\t");
+            return { argv: argv!, cwd: cwd! };
+          })
+      : [];
+  return { dir, calls };
+}
+
+/**
+ * An installed copy of this repo at `<home>/versions/<version>`: `src/`, `bin/`, `bun.lock` and
+ * `package.json` (its version set to `version`), the repo's `node_modules` linked in, and a
+ * dashboard build stamped `version`. Points `<home>/current` at it and returns the version dir.
+ */
+export function makeInstalledCopy(home: string, version: string): string {
+  const dir = path.join(home, "versions", version);
+  fs.mkdirSync(dir, { recursive: true });
+  for (const name of ["src", "bin", "bun.lock"])
+    fs.cpSync(path.join(REPO_ROOT, name), path.join(dir, name), { recursive: true });
+  const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
+  fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ ...pkg, version }, null, 2));
+  fs.symlinkSync(path.join(REPO_ROOT, "node_modules"), path.join(dir, "node_modules"));
+  fs.cpSync(path.join(dashboardFixture(version), "dist"), path.join(dir, "dashboard/dist"), {
+    recursive: true,
+  });
+  // A rename replaces an existing link in one step, so a reader never finds `current` missing.
+  const link = path.join(home, "current");
+  const tmp = `${link}.${process.pid}.tmp`;
+  fs.rmSync(tmp, { force: true });
+  fs.symlinkSync(path.join("versions", version), tmp);
+  fs.renameSync(tmp, link);
+  return dir;
+}
+
+/**
+ * Run `<home>/current/bin/crank-mem` in `cwd` with `home` as its crank home, a fresh CODEX_HOME,
+ * and a runtime `fakeTool` bun first on PATH so no real `bun install` writes through the copy's linked node_modules.
+ */
+export function runInstalled(
+  home: string,
+  cwd: string,
+  args: string[],
+  env?: Record<string, string>,
+): CliRun {
+  const result = spawnSync(path.join(home, "current/bin/crank-mem"), args, {
+    cwd,
+    encoding: "utf-8",
+    timeout: 30_000,
+    env: childEnv({
+      CRANK_HOME: home,
+      CODEX_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "crank-codexhome-")),
+      PATH: `${fakeTool("bun", "runtime").dir}:${process.env.PATH}`,
+      ...env,
+    }),
+  });
+  return { status: result.status ?? -1, stdout: result.stdout, stderr: result.stderr };
+}
+
+const initedTemplates = new Map<string, string>();
+
+/**
+ * A copy of a project inited once per process with `files`, timestamps kept. Only for tests that assert
+ * nothing about the registry or Codex trust and run no `uninstall` and no `--restore`: init's backup
+ * manifest names the template's path. The template lives outside `tempDir`, which `cleanup` empties.
+ */
+export function initedCopy(
+  files: Record<string, string> = { "a.ts": "export const a = 1;\n" },
+): string {
+  const key = JSON.stringify(files);
+  let template = initedTemplates.get(key);
+  if (template === undefined) {
+    template = fs.mkdtempSync(path.join(os.tmpdir(), "crank-template-"));
+    for (const [rel, content] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(template, rel)), { recursive: true });
+      fs.writeFileSync(path.join(template, rel), content);
+    }
+    expect(runCli(template, ["init", "--yes", "--codex", "skip"]).status).toBe(0);
+    initedTemplates.set(key, template);
+  }
+  const copy = tempDir("crank-copy-");
+  fs.cpSync(template, copy, { recursive: true, preserveTimestamps: true });
+  return copy;
+}
+
+/** An `initedCopy` listed in `home`'s registry, as a realpath, since the dashboard hashes the root as listed. */
+export function registeredCopy(home: string, files?: Record<string, string>): string {
+  const root = fs.realpathSync(initedCopy(files));
+  withEnv({ CRANK_HOME: home }, () => registerProject(root));
+  return root;
 }
 
 /** Set a file's atime and mtime to `ms` since the epoch. */
@@ -180,6 +332,7 @@ export function seedMemory(
     nextSteps?: string;
     proposals?: DigestInput["proposals"];
     stale?: DigestInput["stale"];
+    request?: string;
   } = {},
 ): number[] {
   const n = ++seedCount;
@@ -195,7 +348,7 @@ export function seedMemory(
       model: "seed",
       costUsd: opts.costUsd ?? 0,
       summary: {
-        request: "s",
+        request: opts.request ?? "s",
         investigated: "s",
         learned: "s",
         completed: "s",
@@ -258,6 +411,7 @@ export type FakeScenario = {
   raw?: string; // printed instead of lines
   exit?: number; // default 0
   sleepMs?: number; // wait before printing
+  hold?: true; // wait before printing until the test calls the fake's release()
   pauseAfterFirstMs?: number; // wait after printing the first line, before the rest
 };
 export type FakeCall = {
@@ -299,6 +453,11 @@ if (argv[0] === "auth" && argv[1] === "status") {
 const startMs = Date.now();
 const stdin = await new Response(Bun.stdin.stream()).text();
 fs.appendFileSync(callsFile, JSON.stringify({ argv, env: process.env, stdin, cwd: process.cwd(), startMs }) + "\\n");
+// An orphaned held fake (its job killed without its group) exits instead of polling forever.
+if (s.hold) while (!fs.existsSync(path.join(dir, "release"))) {
+  if (process.ppid === 1) process.exit(1);
+  await sleep(20);
+}
 if (s.sleepMs) await sleep(s.sleepMs);
 if (s.raw !== undefined) process.stdout.write(s.raw);
 else for (const [i, line] of (s.lines ?? []).entries()) {
@@ -321,11 +480,14 @@ function readJsonl(file: string): any[] {
   }
 }
 
-/** A fake `claude` on PATH: the n-th `-p` call plays `scenarios[n]` (the last repeats) and records its argv, env, stdin and cwd. */
+/**
+ * A fake `claude` on PATH: the n-th `-p` call plays `scenarios[n]` (the last repeats) and records its argv, env, stdin and cwd.
+ * `release()` lets every `hold` scenario, running or later, print.
+ */
 export function fakeClaude(
   dir: string,
   scenarios: FakeScenario[],
-): { env: Record<string, string>; calls(): FakeCall[] } {
+): { env: Record<string, string>; calls(): FakeCall[]; release(): void } {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "claude"), FAKE_CLAUDE, { mode: 0o755 });
   fs.writeFileSync(path.join(dir, "scenarios.json"), JSON.stringify(scenarios));
@@ -339,6 +501,9 @@ export function fakeClaude(
         ...c,
         endMs: ends.get(n) ?? null,
       }));
+    },
+    release() {
+      fs.writeFileSync(path.join(dir, "release"), "");
     },
   };
 }
@@ -371,11 +536,15 @@ export function spoolFiles(home: string): string[] {
   }
 }
 
-/** Record a `login` stop under a crank home, as the daemon does when claude is logged out. */
-export function stopDigests(home: string): void {
+/**
+ * Record a stop under a crank home, as the daemon does when claude is logged out
+ * (`login`) or runs on a credential other than the user's login (`credential`).
+ */
+export function stopDigests(home: string, reason: "login" | "credential" = "login"): void {
+  const detail = reason === "login" ? "Not logged in" : "API key in use";
   fs.writeFileSync(
     path.join(home, STOP_FILE),
-    JSON.stringify({ reason: "login", atMs: Date.now(), detail: "Not logged in" }),
+    JSON.stringify({ reason, atMs: Date.now(), detail }),
   );
 }
 
@@ -386,14 +555,16 @@ export function spoolEntry(
   projectRoot: string,
   updatedAt: number,
   parked = false,
+  opts: { transcriptPath?: string; cwd?: string; ended?: boolean } = {},
 ): void {
   const dir = parked ? path.join(home, "spool", "parked") : path.join(home, "spool");
   fs.mkdirSync(dir, { recursive: true });
-  const entry = {
-    transcriptPath: `/t/${stem}.jsonl`,
+  const entry: SpoolEntry = {
+    transcriptPath: opts.transcriptPath ?? `/t/${stem}.jsonl`,
     projectRoot,
+    cwd: opts.cwd ?? projectRoot,
     agent: "claude",
-    ended: true,
+    ended: opts.ended ?? true,
     updatedAt,
   };
   fs.writeFileSync(path.join(dir, `${stem}.json`), JSON.stringify(entry));
@@ -451,7 +622,7 @@ export function startDaemon(
   const root = cloneRoot ?? REPO_ROOT;
   const proc = spawn(path.join(root, "bin/crank-mem"), ["daemon", ...args], {
     cwd: root,
-    env: { ...process.env, ...env },
+    env: childEnv(env),
     detached: true,
     stdio: "ignore",
   });
@@ -489,37 +660,29 @@ export function makeModelHome(): string {
   return home;
 }
 
-/** Start tests/fixtures/model-server.ts as a child serving `dir`; `requests()` lists the paths it was asked for. */
-export async function startModelServer(
-  dir: string,
-  mode: "ok" | "stall" | "slow",
+/**
+ * Start `script` under this runtime with `args` plus `--log <file>`; it prints `PORT <n>` once
+ * listening on 127.0.0.1 and appends each requested path to the log, which `requests()` lists.
+ */
+export async function startFixtureServer(
+  script: string,
+  args: string[],
 ): Promise<{ url: string; requests(): string[]; stop(): void }> {
-  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "crank-modelsrv-")), "requests.log");
-  fs.writeFileSync(log, "");
-  const proc = spawn(
-    process.execPath,
-    [
-      path.join(REPO_ROOT, "tests/fixtures/model-server.ts"),
-      "--dir",
-      dir,
-      "--mode",
-      mode,
-      "--log",
-      log,
-    ],
-    {
-      stdio: ["ignore", "pipe", "inherit"],
-    },
+  const log = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), "crank-fixturesrv-")),
+    "requests.log",
   );
+  fs.writeFileSync(log, "");
+  const proc = spawn(process.execPath, [script, ...args, "--log", log], {
+    stdio: ["ignore", "pipe", "inherit"],
+  });
   const stop = () => {
     proc.kill("SIGKILL");
   };
+  const name = path.basename(script);
   const port = await new Promise<number>((resolve, reject) => {
     let out = "";
-    const timer = setTimeout(
-      () => reject(new Error("model server did not print its port")),
-      10_000,
-    );
+    const timer = setTimeout(() => reject(new Error(`${name} did not print its port`)), 10_000);
     proc.stdout!.on("data", (chunk: Buffer) => {
       out += chunk.toString();
       const m = /^PORT (\d+)\n/.exec(out);
@@ -530,7 +693,7 @@ export async function startModelServer(
     });
     proc.once("exit", () => {
       clearTimeout(timer);
-      reject(new Error("model server exited before printing its port"));
+      reject(new Error(`${name} exited before printing its port`));
     });
   }).catch((err) => {
     stop();
@@ -543,17 +706,100 @@ export async function startModelServer(
   };
 }
 
+/** Start tests/fixtures/model-server.ts as a child serving `dir`; `requests()` lists the paths it was asked for. */
+export function startModelServer(
+  dir: string,
+  mode: "ok" | "stall" | "slow",
+): Promise<{ url: string; requests(): string[]; stop(): void }> {
+  return startFixtureServer(path.join(REPO_ROOT, "tests/fixtures/model-server.ts"), [
+    "--dir",
+    dir,
+    "--mode",
+    mode,
+  ]);
+}
+
+/** Start tests/fixtures/release-server.ts as a child answering `GET /<path>` with `<dir>/<path>`. */
+export function startReleaseServer(
+  dir: string,
+  opts: { delayMs?: number } = {},
+): Promise<{ url: string; requests(): string[]; stop(): void }> {
+  return startFixtureServer(path.join(REPO_ROOT, "tests/fixtures/release-server.ts"), [
+    "--dir",
+    dir,
+    ...(opts.delayMs === undefined ? [] : ["--delay-ms", String(opts.delayMs)]),
+  ]);
+}
+
+export type Pack = { status: number; stderr: string; out: string };
+
+/** Run `scripts/pack-release.ts` from a temp cwd into a fresh out dir. */
+export function pack(dist: string, extra: string[] = []): Pack {
+  const out = tempDir("crank-release-out-");
+  const result = spawnSync(
+    process.execPath,
+    [path.join(REPO_ROOT, "scripts/pack-release.ts"), "--out", out, "--dist", dist, ...extra],
+    { cwd: tempDir("crank-release-cwd-"), encoding: "utf-8", timeout: 60_000, env: childEnv() },
+  );
+  return { status: result.status ?? -1, stderr: result.stderr, out };
+}
+
+const RELEASE_FILES = ["crank-mem.tar.gz", "crank-mem.tar.gz.sha256", "release.json"];
+const packedReleases = new Map<string, string>();
+
+/** The release files of `version`, packed once per process outside `tempDir`, which `cleanup` empties. */
+function packedRelease(version: string): string {
+  let dir = packedReleases.get(version);
+  if (dir === undefined) {
+    const run = pack(path.join(dashboardFixture(version), "dist"), ["--version", version]);
+    expect(run.stderr).toBe("");
+    expect(run.status).toBe(0);
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "crank-release-dir-"));
+    for (const file of RELEASE_FILES) {
+      fs.copyFileSync(path.join(run.out, file), path.join(dir, file));
+    }
+    packedReleases.set(version, dir);
+  }
+  return dir;
+}
+
+/**
+ * A fresh release dir laid out like the release host: `download/v<V>/` for each of `versions`
+ * and `latest/download/` holding `latest`. Each call returns its own copy, so a test may edit it.
+ */
+export function releaseDir(versions: string[] = ["1.0.0"], latest = versions[0]!): string {
+  const copy = tempDir("crank-release-r-");
+  const subs: Array<[string, string]> = [
+    ...versions.map((v): [string, string] => [`download/v${v}`, v]),
+    ["latest/download", latest],
+  ];
+  for (const [sub, version] of subs) {
+    fs.cpSync(packedRelease(version), path.join(copy, sub), { recursive: true });
+  }
+  return copy;
+}
+
 /**
  * A dashboard dir whose `dist/` copies tests/fixtures/dashboard-dist/, with `dist/.crank-version`
- * holding `stamp` unless `stamp` is null.
+ * holding `stamp` unless `stamp` is null. `dir` is a fresh `tempDir` unless given.
  */
-export function dashboardFixture(stamp: string | null): string {
-  const dir = tempDir("crank-dashdir-");
+export function dashboardFixture(stamp: string | null, dir = tempDir("crank-dashdir-")): string {
   fs.cpSync(path.join(REPO_ROOT, "tests/fixtures/dashboard-dist"), path.join(dir, "dist"), {
     recursive: true,
   });
   if (stamp !== null) fs.writeFileSync(path.join(dir, "dist/.crank-version"), stamp);
   return dir;
+}
+
+let sharedDashboard: string | undefined;
+
+/** One current dashboard fixture per process, outside `tempDir` so `cleanup` keeps it; the preload's root holds it. */
+export function sharedDashboardDir(): string {
+  sharedDashboard ??= dashboardFixture(
+    cliVersion(),
+    fs.mkdtempSync(path.join(os.tmpdir(), "crank-dashdir-")),
+  );
+  return sharedDashboard;
 }
 
 /** `root` (a fresh temp dir by default) inited with `home` as its crank home, as a realpath. */
@@ -580,13 +826,21 @@ export const ZONES = ["Pacific/Kiritimati", "Pacific/Pago_Pago"];
 const STARTUP_LINE = /^crank-mem dashboard: (http:\/\/127\.0\.0\.1:(\d+)\/\?token=([0-9a-f]+))\n/;
 
 /**
- * Start `crank-mem dashboard` as a child on `home` and wait for its startup line. `get` sends a
+ * Start `crank-mem dashboard` as a child on `home` and wait for its startup line; with `bin`, the
+ * child is that launcher (an installed copy's), which needs its own `dashboardDir`. `get` sends a
  * request with the session cookie and the Host the URL names unless `init` overrides them.
  */
 export async function startDashboard(
   home: string,
   args: string[],
-  opts: { open?: boolean; cwd?: string; env?: Record<string, string>; dashboardDir?: string } = {},
+  opts: {
+    open?: boolean;
+    cwd?: string;
+    env?: Record<string, string>;
+    dashboardDir?: string;
+    keep?: true;
+    bin?: string;
+  } = {},
 ): Promise<{
   url: string;
   token: string;
@@ -594,27 +848,22 @@ export async function startDashboard(
   stop(signal?: "SIGTERM" | "SIGINT"): Promise<number>;
   output(): { stdout: string; stderr: string };
 }> {
+  const dashArgs = ["dashboard", ...(opts.open ? [] : ["--no-open"]), ...args];
   const child = spawn(
-    process.execPath,
-    [
-      path.join(REPO_ROOT, "src/cli/main.ts"),
-      "dashboard",
-      ...(opts.open ? [] : ["--no-open"]),
-      ...args,
-    ],
+    opts.bin ?? process.execPath,
+    opts.bin ? dashArgs : [path.join(REPO_ROOT, "src/cli/main.ts"), ...dashArgs],
     {
       cwd: opts.cwd ?? tempDir("crank-dash-cwd-"),
-      env: {
-        ...process.env,
+      env: childEnv({
         CRANK_HOME: home,
         CRANK_DASHBOARD_DIR: opts.dashboardDir ?? dashboardFixture(cliVersion()),
         ...opts.env,
-      },
+      }),
       detached: true,
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
-  children.push(child);
+  if (!opts.keep) children.push(child);
   let stdout = "";
   let stderr = "";
   child.stdout!.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
@@ -690,8 +939,9 @@ export type Journey = {
 };
 
 /**
- * Write the `stem` (default s1) spool entry through the Stop and SessionEnd hooks, then run `job <stem>`.
- * `transcript` replaces the fixture's text; `env` adds to the job's environment; `home` replaces the empty crank home.
+ * Plant the `stem` (default s1) spool entry, or with `hooks` write it through the Stop and SessionEnd hooks, then
+ * run `job <stem>`. `transcript` replaces the fixture's text; `env` adds to the job's environment; `home` replaces
+ * the empty crank home.
  */
 export function journey(
   root: string,
@@ -705,6 +955,7 @@ export function journey(
     stem?: string;
     cwd?: string;
     args?: string[];
+    hooks?: true;
   } = {},
 ): Journey {
   const home = opts.home ?? makeCrankHome();
@@ -716,24 +967,28 @@ export function journey(
   if (opts.transcript === undefined) fs.copyFileSync(FIXTURE, transcript);
   else fs.writeFileSync(transcript, opts.transcript);
   const fake = fakeClaude(path.join(tmp, "bin"), scenarios);
-  const hookEnv = { ...fake.env, CRANK_HOME: home };
   const cwd = opts.cwd ?? root;
-  expect(
-    runHook(
-      "src/hooks/stop.ts",
-      JSON.stringify({ ...claudeStop(cwd), transcript_path: transcript }),
-      root,
-      hookEnv,
-    ).status,
-  ).toBe(0);
-  expect(
-    runHook(
-      "src/hooks/session-end.ts",
-      JSON.stringify(claudeSessionEnd(cwd, transcript)),
-      root,
-      hookEnv,
-    ).status,
-  ).toBe(0);
+  if (opts.hooks) {
+    const hookEnv = { ...fake.env, CRANK_HOME: home };
+    expect(
+      runHook(
+        "src/hooks/stop.ts",
+        JSON.stringify({ ...claudeStop(cwd), transcript_path: transcript }),
+        root,
+        hookEnv,
+      ).status,
+    ).toBe(0);
+    expect(
+      runHook(
+        "src/hooks/session-end.ts",
+        JSON.stringify(claudeSessionEnd(cwd, transcript)),
+        root,
+        hookEnv,
+      ).status,
+    ).toBe(0);
+  } else {
+    spoolEntry(home, stem, root, Date.now(), false, { transcriptPath: transcript, cwd });
+  }
   expect(spoolFiles(home)).toEqual([`${stem}.json`]);
   const j = { root, home, stem, transcript, fake };
   const job = opts.skipJob
@@ -790,16 +1045,13 @@ export function stop(j: Pick<Journey, "root" | "home" | "fake" | "transcript">):
 }
 
 /** Start `job s1` in its own process group, so a kill takes its claude child with it. */
-export function spawnJob(
-  j: Pick<Journey, "root" | "home" | "fake">,
-  args: string[] = [],
-): Promise<number | null> {
+export function spawnJob(j: Pick<Journey, "root" | "home" | "fake">): Promise<number | null> {
   const child = spawn(
     process.execPath,
-    [path.join(REPO_ROOT, "src/cli/main.ts"), "job", "s1", "--run-timeout-ms", "10000", ...args],
+    [path.join(REPO_ROOT, "src/cli/main.ts"), "job", "s1", "--run-timeout-ms", "10000"],
     {
       cwd: j.root,
-      env: { ...process.env, ...j.fake.env, CRANK_HOME: j.home },
+      env: childEnv({ ...j.fake.env, CRANK_HOME: j.home }),
       detached: true,
       stdio: "ignore",
     },
