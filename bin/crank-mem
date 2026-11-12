@@ -7,8 +7,11 @@
 DIR=$(CDPATH= cd -- "$(dirname -- "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)
 CLI="$DIR/../src/cli/main.ts"
 
+# --no-env-file: bun otherwise loads a `.env` from the working directory, so a checkout could set
+# CRANK_RELEASE_URL (where `self-update` downloads and runs code from) or any other CRANK_* setting
+# (crank-mem-eval; Codex security review on PR #8). Node loads no .env unless asked.
 if command -v bun >/dev/null 2>&1; then
-  exec bun "$CLI" "$@"
+  exec bun --no-env-file "$CLI" "$@"
 fi
 
 if command -v node >/dev/null 2>&1; then

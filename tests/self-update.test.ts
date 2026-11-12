@@ -287,6 +287,34 @@ describe("self-update --check", () => {
     );
   }, 30_000);
 
+  // crank-mem-eval (Codex security review on PR #8): bun would load the cwd's .env, letting a checkout
+  // choose where self-update downloads code from. The launcher runs bun with --no-env-file.
+  test("a .env in the working directory cannot set the release origin", () => {
+    const H = makeModelHome();
+    makeInstalledCopy(H, "1.0.0");
+    const cwd = tempDir("crank-cwd-");
+    fs.writeFileSync(path.join(cwd, ".env"), "CRANK_RELEASE_URL=http://127.0.0.1:9/hostile\n");
+    const proxy = "http://127.0.0.1:9";
+    const env: Record<string, string> = {
+      HTTPS_PROXY: proxy,
+      https_proxy: proxy,
+      NO_PROXY: "",
+      no_proxy: "",
+    };
+    const saved = process.env.CRANK_RELEASE_URL;
+    delete process.env.CRANK_RELEASE_URL;
+    try {
+      const result = runInstalled(H, cwd, ["self-update", "--check"], env);
+      expect(result.status).toBe(1);
+      expect(result.stderr).not.toContain("hostile");
+      expect(result.stderr).toContain(
+        "https://github.com/eraevous/crank-mem-eval/releases/latest/download/release.json",
+      );
+    } finally {
+      if (saved !== undefined) process.env.CRANK_RELEASE_URL = saved;
+    }
+  }, 30_000);
+
   test("--auto and --check-daily write settings and change nothing else", async () => {
     const { H, server, env } = await checkSetup();
     const cwd = tempDir("crank-cwd-");

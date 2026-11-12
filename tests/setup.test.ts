@@ -397,6 +397,18 @@ describe("upgrade --all", () => {
     expect(run.status).toBe(1);
   });
 
+  // crank-mem-eval (Codex review on PR #8): a throw in one project's repair is that project's failure.
+  test("a project whose config cannot be read still lets the others repair, and exits 1", () => {
+    const { home, a, b } = twoProjects();
+    const config = path.join(a, ".crank/config.json");
+    fs.rmSync(config);
+    fs.mkdirSync(config);
+    const run = upgradeAll(home, fakeTool("bun", 0));
+    expect(run.stderr).toContain(`${a}: failed (`);
+    expect(vendored(b)).toBe(cliVersion());
+    expect(run.status).toBe(1);
+  });
+
   const V1_INDEX = '{"version":1,"meta":{"lastScanned":null,"fileCount":0},"files":{}}';
   const indexOf = (root: string) => path.join(root, ".crank/anatomy-index.json");
 
