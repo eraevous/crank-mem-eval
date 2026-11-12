@@ -15,7 +15,7 @@ export function rcTarget(
   platform: NodeJS.Platform,
   home: string,
 ): { file: string; line: (binDir: string) => string } {
-  const exportLine = (binDir: string) => `export PATH="${binDir}:$PATH"`;
+  const exportLine = (binDir: string) => `export PATH=${posixQuote(binDir)}:"$PATH"`;
   switch (path.basename(shell)) {
     case "zsh":
       return { file: path.join(home, ".zshrc"), line: exportLine };
@@ -27,11 +27,24 @@ export function rcTarget(
     case "fish":
       return {
         file: path.join(home, ".config/fish/config.fish"),
-        line: (binDir) => `fish_add_path ${binDir}`,
+        line: (binDir) => `fish_add_path ${fishQuote(binDir)}`,
       };
     default:
       return { file: path.join(home, ".profile"), line: exportLine };
   }
+}
+
+// The bin dir is quoted as one literal word, so spaces, `$` and backquotes in it are never split or
+// expanded when the startup file runs (crank-mem-eval; Copilot review on PR #8).
+
+/** `s` as one POSIX shell word with no expansion: single quotes, each `'` written as `'\''`. */
+export function posixQuote(s: string): string {
+  return `'${s.replaceAll("'", `'\\''`)}'`;
+}
+
+/** `s` as one fish word with no expansion: single quotes, with `\` and `'` backslash-escaped. */
+export function fishQuote(s: string): string {
+  return `'${s.replace(/[\\']/g, "\\$&")}'`;
 }
 
 /** The span of the block in `text`, from the `\n` before RC_START through RC_END's line end; null when absent. */

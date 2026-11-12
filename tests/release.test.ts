@@ -381,7 +381,7 @@ describe("self-install", () => {
 });
 
 describe("self-install PATH offer", () => {
-  const exportLine = (bin: string) => `export PATH="${bin}:$PATH"`;
+  const exportLine = (bin: string) => `export PATH='${bin}':"$PATH"`;
   const markers = (text: string) => text.split("# >>> crank-mem >>>").length - 1;
 
   test("with --yes the zsh rc file gains one block, and a second install leaves one", async () => {
@@ -407,7 +407,7 @@ describe("self-install PATH offer", () => {
     const result = installSh(["--yes", "--bin-dir", t.bin], { ...t.env, SHELL: "/usr/bin/fish" });
     expect(result.status).toBe(0);
     const rc = fs.readFileSync(path.join(t.HOME, ".config/fish/config.fish"), "utf-8");
-    expect(rc).toContain(`# >>> crank-mem >>>\nfish_add_path ${t.bin}\n# <<< crank-mem <<<`);
+    expect(rc).toContain(`# >>> crank-mem >>>\nfish_add_path '${t.bin}'\n# <<< crank-mem <<<`);
   }, 60_000);
 
   test("bash picks the platform's file", async () => {

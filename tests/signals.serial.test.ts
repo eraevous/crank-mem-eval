@@ -1,5 +1,6 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
@@ -114,6 +115,37 @@ describe("hook-started daemon (black-box)", () => {
     expect(fs.existsSync(path.join(off.home, "daemon.json"))).toBe(false);
     expect(fs.existsSync(path.join(off.home, "spool"))).toBe(false);
   }, 10_000);
+
+  // crank-mem-eval (Copilot review on PR #8): a hook runs under plain bun in the project, so the
+  // project's .env reaches its environment; the daemon it starts must not inherit CRANK_RELEASE_URL.
+  test("a daemon a hook starts does not inherit a CRANK_RELEASE_URL from the project's .env", async () => {
+    const clone = fs.mkdtempSync(path.join(os.tmpdir(), "crank-fakeclone-"));
+    const dump = path.join(clone, "env.txt");
+    fs.mkdirSync(path.join(clone, "bin"));
+    fs.writeFileSync(path.join(clone, "bin/crank-mem"), `#!/bin/sh\nenv > '${dump}'\n`, {
+      mode: 0o755,
+    });
+    const root = digestProject({ clone_root: clone });
+    fs.writeFileSync(path.join(root, ".env"), "CRANK_RELEASE_URL=http://127.0.0.1:9/hostile\n");
+    const { env } = daemonEnv();
+    const saved = process.env.CRANK_RELEASE_URL;
+    delete process.env.CRANK_RELEASE_URL;
+    try {
+      const run = runHook(
+        STOP,
+        JSON.stringify({ ...claudeStop(root), transcript_path: TRANSCRIPT }),
+        root,
+        env,
+      );
+      expect(run.status).toBe(0);
+      await waitFor(() => fs.existsSync(dump) && fs.readFileSync(dump, "utf-8").length > 0, 10_000);
+      const seen = fs.readFileSync(dump, "utf-8");
+      expect(seen).toContain("CRANK_HOME=");
+      expect(seen).not.toContain("CRANK_RELEASE_URL");
+    } finally {
+      if (saved !== undefined) process.env.CRANK_RELEASE_URL = saved;
+    }
+  }, 20_000);
 
   test.each([
     ["empty", ""],

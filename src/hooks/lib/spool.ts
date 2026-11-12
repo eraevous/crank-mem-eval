@@ -137,6 +137,18 @@ export function daemonAlive(): boolean {
 }
 
 /**
+ * The environment a started daemon inherits: this process's, without `CRANK_RELEASE_URL`. A hook runs
+ * under plain `bun` in the project, so a checkout's `.env` may have set it, and the daemon's auto-update
+ * would then download and run code from there. The daemon checks the default release origin instead
+ * (crank-mem-eval; Copilot review on PR #8).
+ */
+function daemonEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env.CRANK_RELEASE_URL;
+  return env;
+}
+
+/**
  * Start the daemon of the recorded tool root (`clone_root`: a clone or an
  * installed copy's `current`) unless one is alive. Detached with stdio
  * ignored, so the hook returns at once and nothing reaches its stdout; cwd is
@@ -149,6 +161,7 @@ export function ensureDaemon(config: Pick<CrankConfig, "clone_root">): void {
     if (!fs.existsSync(bin)) return;
     const child = spawn(bin, ["daemon"], {
       cwd: config.clone_root,
+      env: daemonEnv(),
       detached: true,
       stdio: "ignore",
     });
