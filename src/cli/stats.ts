@@ -21,10 +21,13 @@ import {
   CODEX_REVIEW_HINT,
 } from "./codex-trust.ts";
 import { readStopState } from "../hooks/lib/user-state.ts";
-import { daemonAlive, readParked, readSpool } from "../hooks/lib/spool.ts";
-import { memoryPath, openMemory } from "../hooks/lib/memory.ts";
+import { daemonAlive, readParked, readSpool, type SpoolItem } from "../hooks/lib/spool.ts";
+import { formatUsd, projectStatus, type HealthSummary } from "../hooks/lib/wire.ts";
+import { localDate, memoryPath, openMemory } from "../hooks/lib/memory.ts";
 import { latestSnapshot } from "../hooks/lib/store-upkeep.ts";
 import { EMBED_MODEL, embedderReady } from "../daemon/embedder.ts";
+import { readUpdateState, updateAvailable } from "./updates.ts";
+import { installedCopy } from "./version.ts";
 
 function age(iso: string | null): string {
   if (!iso) return "never";
@@ -118,6 +121,16 @@ function memoryLines(
   return lines;
 }
 
+/** The `update:` row's value: an available release, the last check's date, or no check yet. */
+function updateValue(): string {
+  const state = readUpdateState();
+  if (updateAvailable(state))
+    return `${state.latest.version} available — run \`crank-mem self-update\``;
+  if (state.latest !== null && state.checkedAtMs !== null)
+    return `up to date (checked ${localDate(state.checkedAtMs)})`;
+  return "not checked yet";
+}
+
 const MEMORY_STATE = {
   missing: "none yet",
   older: "older than this version; run crank-mem upgrade",
@@ -125,54 +138,85 @@ const MEMORY_STATE = {
   unreadable: "unreadable",
 } as const;
 
-/** To the cent, or to two significant digits under a cent: one Haiku digest costs about $0.002. */
-function dollars(usd: number): string {
-  return usd > 0 && usd < 0.01 ? `$${usd.toPrecision(2)}` : `$${usd.toFixed(2)}`;
-}
-
 /**
- * Whether digests run, what waits for them user-wide, what the store holds, and
- * whether search by meaning works, as label and value pairs: `stats` pads them
- * and the dashboard's Health view answers them as they are.
+ * Whether digests run, what waits for them from this project, what the store holds,
+ * and whether search by meaning works: the dashboard's Health view reads it, and
+ * `captureRows` prints it.
  */
-export async function captureRows(
-  root: string,
-  config: CrankConfig,
-): Promise<[label: string, value: string][]> {
+export async function captureSummary(root: string, config: CrankConfig): Promise<HealthSummary> {
   const stop = readStopState();
-  const rows: [label: string, value: string][] = [
-    ["digest", !config.digest ? "off" : stop ? `stopped (${stop.reason})` : "on"],
-    ["daemon", daemonAlive() ? "alive" : "not running"],
-    ["spool", `${readSpool().length} waiting, ${readParked().length} parked`],
-  ];
+  const ours = (items: SpoolItem[]) => items.filter(({ entry }) => entry.projectRoot === root);
   const store = memoryPath(root);
   const opened = openMemory(store, "read");
+  let memory: HealthSummary["memory"] = null;
   if (opened.status === "open") {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    let s;
     try {
-      s = opened.memory.stats(EMBED_MODEL, monthStart);
+      const s = opened.memory.stats(EMBED_MODEL, monthStart);
+      memory = {
+        observations: s.observations,
+        unembedded: s.unembedded,
+        lastDigestMs: s.lastDigestMs,
+        monthCostUsd: s.costUsdSince,
+        pendingProposals: s.pendingProposals,
+        staleFlags: s.staleRows,
+        lastConsolidation: s.lastConsolidation,
+      };
     } finally {
       opened.memory.close();
     }
-    rows.push(["observations", String(s.observations)]);
-    rows.push(["unembedded", String(s.unembedded)]);
-    rows.push(["last digest", s.lastDigestMs === null ? "never" : ageOf(s.lastDigestMs)]);
-    rows.push(["month cost", `${dollars(s.costUsdSince)} (list price)`]);
-    rows.push(["proposals", String(s.pendingProposals)]);
-    rows.push(["stale", String(s.staleRows)]);
-    const last = s.lastConsolidation;
+  }
+  const facts: Omit<HealthSummary, "status"> = {
+    digest: !config.digest ? "off" : stop ? "stopped" : "on",
+    stopReason: config.digest && stop ? stop.reason : null,
+    daemonAlive: daemonAlive(),
+    spool: { waiting: ours(readSpool()).length, parked: ours(readParked()).length },
+    store: opened.status,
+    memory,
+    lastSnapshotMs: latestSnapshot(store)?.atMs ?? null,
+    embedderReady: await embedderReady(),
+  };
+  return { ...facts, status: projectStatus(facts) };
+}
+
+/**
+ * `captureSummary` as the label and value pairs `stats` pads, except that the
+ * spool row counts what waits user-wide; the status row counts this project's.
+ */
+async function captureRows(
+  root: string,
+  config: CrankConfig,
+): Promise<[label: string, value: string][]> {
+  const s = await captureSummary(root, config);
+  const { label, fix } = s.status;
+  const rows: [label: string, value: string][] = [
+    [
+      "status",
+      fix === null ? label : `${label} — ${fix.text}${fix.command ? ` Run: ${fix.command}` : ""}`,
+    ],
+    ["digest", s.digest === "stopped" ? `stopped (${s.stopReason})` : s.digest],
+    ["daemon", s.daemonAlive ? "alive" : "not running"],
+    ["spool", `${readSpool().length} waiting, ${readParked().length} parked`],
+  ];
+  const m = s.memory;
+  if (m !== null) {
+    rows.push(["observations", String(m.observations)]);
+    rows.push(["unembedded", String(m.unembedded)]);
+    rows.push(["last digest", m.lastDigestMs === null ? "never" : ageOf(m.lastDigestMs)]);
+    rows.push(["month cost", `${formatUsd(m.monthCostUsd)} (list price)`]);
+    rows.push(["proposals", String(m.pendingProposals)]);
+    rows.push(["stale", String(m.staleFlags)]);
+    const last = m.lastConsolidation;
     rows.push([
       "consolidation",
       last === null ? "never" : `${ageOf(last.startedMs)} (${last.outcome})`,
     ]);
-  } else {
-    rows.push(["memory", MEMORY_STATE[opened.status]]);
+  } else if (s.store !== "open") {
+    rows.push(["memory", MEMORY_STATE[s.store]]);
   }
-  const latest = latestSnapshot(store);
-  rows.push(["last snapshot", latest === null ? "never" : ageOf(latest.atMs)]);
-  rows.push(["embedder", (await embedderReady()) ? "ready" : "not ready (run crank-mem setup)"]);
+  rows.push(["last snapshot", s.lastSnapshotMs === null ? "never" : ageOf(s.lastSnapshotMs)]);
+  rows.push(["embedder", s.embedderReady ? "ready" : "not ready (run crank-mem setup)"]);
   return rows;
 }
 
@@ -204,6 +248,7 @@ export async function run(_args: string[]): Promise<number> {
   console.log(`  index size:       ${(indexSize / 1024).toFixed(1)} KB`);
   console.log(`  runtime:          ${config.runtime} (vendored ${config.vendored_version})`);
   console.log(`  injection budget: ${config.injection_budget_bytes} bytes`);
+  if (installedCopy()) console.log(row("update", updateValue()));
   for (const line of memoryLines(root, crankDir, config, index)) console.log(line);
   for (const [label, value] of await captureRows(root, config)) console.log(row(label, value));
 

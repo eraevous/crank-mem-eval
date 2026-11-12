@@ -38,7 +38,7 @@ export type DaemonState = { pid: number; version: string; heartbeatMs: number };
 const PARKED = "parked";
 const EXT = ".json";
 
-function spoolDir(): string {
+export function spoolDir(): string {
   return path.join(crankHome(), "spool");
 }
 
@@ -97,6 +97,18 @@ export function signalDigest(
   }
 }
 
+/** The parsed daemon.json; null when it cannot be read or does not hold a JSON object. */
+export function readDaemonState(): Partial<DaemonState> | null {
+  try {
+    const state: unknown = JSON.parse(
+      fs.readFileSync(path.join(crankHome(), DAEMON_FILE), "utf-8"),
+    );
+    return typeof state === "object" && state !== null ? (state as Partial<DaemonState>) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * True while daemon.json holds a heartbeat younger than HEARTBEAT_MAX_MS. A file
  * that does not parse counts by its mtime instead, because a starter between
@@ -125,9 +137,22 @@ export function daemonAlive(): boolean {
 }
 
 /**
- * Start the clone's daemon unless one is alive. Detached with stdio ignored, so
- * the hook returns at once and nothing reaches its stdout; cwd is the clone so
- * bun never loads a project's .env. Never throws.
+ * The environment a started daemon inherits: this process's, without `CRANK_RELEASE_URL`. A hook runs
+ * under plain `bun` in the project, so a checkout's `.env` may have set it, and the daemon's auto-update
+ * would then download and run code from there. The daemon checks the default release origin instead
+ * (crank-mem-eval; Copilot review on PR #8).
+ */
+function daemonEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env.CRANK_RELEASE_URL;
+  return env;
+}
+
+/**
+ * Start the daemon of the recorded tool root (`clone_root`: a clone or an
+ * installed copy's `current`) unless one is alive. Detached with stdio
+ * ignored, so the hook returns at once and nothing reaches its stdout; cwd is
+ * that root so bun never loads a project's .env. Never throws.
  */
 export function ensureDaemon(config: Pick<CrankConfig, "clone_root">): void {
   try {
@@ -136,6 +161,7 @@ export function ensureDaemon(config: Pick<CrankConfig, "clone_root">): void {
     if (!fs.existsSync(bin)) return;
     const child = spawn(bin, ["daemon"], {
       cwd: config.clone_root,
+      env: daemonEnv(),
       detached: true,
       stdio: "ignore",
     });

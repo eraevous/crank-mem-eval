@@ -6,21 +6,23 @@ import { errorMessage } from "../hooks/lib/config.ts";
 import { crankHome, ensureCrankHome } from "../hooks/lib/user-state.ts";
 import { parseArgs, positive } from "./args.ts";
 import { COMMANDS } from "./commands.ts";
-import { cliVersion, REPO_ROOT } from "./version.ts";
+import { cliVersion, installedCopy, REPO_ROOT } from "./version.ts";
+import { printUpdateNotice } from "./updates.ts";
 
-// `crank-mem setup`: install the clone's packages, build the dashboard and
-// download the local search model into <crank home>/models.
+// `crank-mem setup`: install the tool's packages, build the dashboard (in a
+// clone only: an installed copy ships its build) and download the local search
+// model into <crank home>/models.
 
 /** The dashboard package, whose build `crank-mem dashboard` serves from `dist/`. */
 export function dashboardDir(): string {
   return process.env.CRANK_DASHBOARD_DIR || path.join(REPO_ROOT, "dashboard");
 }
 
-/** True when `distDir` holds an `index.html` built for this clone's version. */
-export function dashboardCurrent(distDir: string): boolean {
+/** True when `distDir` holds an `index.html` stamped with `version`. */
+export function dashboardCurrent(distDir: string, version: string): boolean {
   if (!fs.existsSync(path.join(distDir, "index.html"))) return false;
   try {
-    return fs.readFileSync(path.join(distDir, ".crank-version"), "utf-8").trim() === cliVersion();
+    return fs.readFileSync(path.join(distDir, ".crank-version"), "utf-8").trim() === version;
   } catch {
     return false;
   }
@@ -79,13 +81,22 @@ function runTool(dir: string, bunArgs: string[], npmArgs: string[]): InstallResu
   };
 }
 
-/** bun from the lockfile; npm from the exact pins in package.json when bun is not on PATH, writing no package-lock.json. */
-export function installPackages(dir: string): InstallResult {
-  return runTool(
-    dir,
-    ["install", "--frozen-lockfile"],
-    ["install", "--ignore-scripts", "--no-package-lock"],
-  );
+/**
+ * bun from the lockfile; npm from the exact pins in package.json when bun is not on PATH, writing
+ * no package-lock.json. `production` leaves out devDependencies.
+ */
+export function installPackages(dir: string, opts: { production?: boolean } = {}): InstallResult {
+  return opts.production
+    ? runTool(
+        dir,
+        ["install", "--production", "--frozen-lockfile"],
+        ["install", "--omit=dev", "--ignore-scripts", "--no-package-lock"],
+      )
+    : runTool(
+        dir,
+        ["install", "--frozen-lockfile"],
+        ["install", "--ignore-scripts", "--no-package-lock"],
+      );
 }
 
 /** Builds the dashboard into `dist/` and stamps it with this clone's version. */
@@ -121,7 +132,27 @@ export function setUpDashboard(): { installedWith: "bun" | "npm" | null; error: 
   };
 }
 
+/** Downloads the local search model into <crank home>/models unless it is already there. */
+export async function ensureModel(opts: {
+  host?: string;
+  fetchTimeoutMs?: number;
+}): Promise<{ ok: true; downloaded: boolean } | { ok: false; detail: string }> {
+  ensureCrankHome();
+  if (modelPresent()) return { ok: true, downloaded: false };
+  try {
+    await embed(["warm up"], {
+      remote: true,
+      host: opts.host,
+      fetchTimeoutMs: opts.fetchTimeoutMs,
+    });
+  } catch (err) {
+    return { ok: false, detail: errorMessage(err) };
+  }
+  return { ok: true, downloaded: true };
+}
+
 export async function run(args: string[]): Promise<number> {
+  printUpdateNotice();
   const { flags } = parseArgs(args, COMMANDS.setup.value);
   const host = typeof flags["model-host"] === "string" ? flags["model-host"] : undefined;
   const fetchTimeoutMs = positive(flags["fetch-timeout-ms"], 0) || undefined;
@@ -130,8 +161,9 @@ export async function run(args: string[]): Promise<number> {
     dashboard: !(core || flags["skip-dashboard"] === true),
     model: !(core || flags["skip-model"] === true),
   };
+  const fromInstalledCopy = installedCopy();
 
-  const installed = installPackages(REPO_ROOT);
+  const installed = installPackages(REPO_ROOT, { production: fromInstalledCopy });
   if (!installed.ok) {
     console.error(`crank-mem: could not install packages (${installed.detail})`);
     return 1;
@@ -139,9 +171,10 @@ export async function run(args: string[]): Promise<number> {
   console.log(`crank-mem: installed packages with ${installed.tool}`);
   writeSetupProfile(profile);
 
+  // An installed copy ships its dashboard build; a clone builds it unless the profile leaves it out.
   if (!profile.dashboard) {
     console.log("crank-mem: skipped the dashboard (run `crank-mem setup` to add it)");
-  } else {
+  } else if (!fromInstalledCopy) {
     const dashboard = setUpDashboard();
     if (dashboard.installedWith) {
       console.log(`crank-mem: installed dashboard packages with ${dashboard.installedWith}`);
@@ -160,17 +193,16 @@ export async function run(args: string[]): Promise<number> {
     );
     return 0;
   }
-  const dir = modelsDir();
-  if (modelPresent()) {
-    console.log(`crank-mem: model already in ${dir}`);
-    return 0;
-  }
-  try {
-    await embed(["warm up"], { remote: true, host, fetchTimeoutMs });
-  } catch (err) {
-    console.error(`crank-mem: could not download the model (${errorMessage(err)})`);
+  const model = await ensureModel({ host, fetchTimeoutMs });
+  if (!model.ok) {
+    console.error(`crank-mem: could not download the model (${model.detail})`);
     return 1;
   }
-  console.log(`crank-mem: downloaded ${EMBED_MODEL} to ${dir}`);
+  const dir = modelsDir();
+  console.log(
+    model.downloaded
+      ? `crank-mem: downloaded ${EMBED_MODEL} to ${dir}`
+      : `crank-mem: model already in ${dir}`,
+  );
   return 0;
 }
