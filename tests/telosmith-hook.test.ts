@@ -5,13 +5,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { REPO_ROOT } from "./helpers.ts";
 
-// The Telosmith PostToolUse hook in .claude/settings.json runs `python3 ... -m aec` after
-// cd-ing into the project. Python puts the current directory first on the import path, so a
-// branch that adds its own aec.py or aec/__main__.py would run as the developer (Codex
-// security review on PR #7). The hook's `aec` shell function drops the checkout from sys.path
-// before running the module (any Python 3.10+), so the checkout is never importable. This test plants a shadow aec package that writes a marker and checks the
-// hook never runs it. It needs no Telosmith installed: with or without one, the shadow
-// module must not execute.
+// The Telosmith PostToolUse hook in .claude/settings.json runs aec for the project. Started
+// inside the checkout, Python would import an aec.py, runpy.py or other module a branch adds
+// there, ahead of the installed Telosmith, and run it as the developer (Codex security reviews
+// on PR #7). The hook's `aec` shell function starts Python from `/` and passes the project as
+// absolute paths. This test plants shadow modules that write a marker and checks the hook never
+// runs one. It needs no Telosmith installed: with or without one, no shadow module may execute.
 
 function hookCommand(): string {
   const settings = JSON.parse(
@@ -27,7 +26,19 @@ test("the Telosmith hook never imports an aec module from the checkout", () => {
   fs.mkdirSync(path.join(project, "aec"));
   fs.writeFileSync(path.join(project, "aec", "__init__.py"), "");
   fs.writeFileSync(path.join(project, "aec", "__main__.py"), shadow);
-  fs.writeFileSync(path.join(project, "aec.py"), shadow);
+  for (const name of [
+    "aec",
+    "runpy",
+    "os",
+    "site",
+    "sitecustomize",
+    "encodings",
+    "codecs",
+    "io",
+    "abc",
+  ]) {
+    fs.writeFileSync(path.join(project, `${name}.py`), shadow);
+  }
   try {
     spawnSync("bash", ["-c", hookCommand()], {
       env: { ...process.env, CLAUDE_PROJECT_DIR: project, PYTHONPATH: "" },
@@ -40,8 +51,8 @@ test("the Telosmith hook never imports an aec module from the checkout", () => {
   }
 });
 
-test("every aec call in the hook goes through the safe launcher", () => {
+test("python starts only outside the checkout", () => {
   const command = hookCommand();
-  expect(command).not.toMatch(/-m aec/);
-  expect(command).toContain("runpy.run_module");
+  expect(command.match(/python3/g)?.length).toBe(1);
+  expect(command).toContain("( cd / && python3 -m aec");
 });
