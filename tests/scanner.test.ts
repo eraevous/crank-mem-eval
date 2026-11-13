@@ -311,6 +311,47 @@ describe("churn and write pins", () => {
     ]);
   });
 
+  // `--relative` in activity.ts → churnFor (aegis/safety-fixes; see ATTRIBUTION.md): a project
+  // rooted in a monorepo subdirectory counts only its own subtree, under the names its index
+  // uses, so a busy sibling package never crowds its own files out of the list.
+  test("a monorepo subdirectory project counts only its own files, named relative to it", () => {
+    const root = makeProject({
+      "pkg/src/a.ts": "x",
+      "pkg/src/b.ts": "x",
+      "other/hot.ts": "x",
+      "top.ts": "x",
+    });
+    git(root, "init", "-q");
+    gitCommit(root, "initial");
+    for (const content of ["1", "2", "3"]) {
+      fs.writeFileSync(path.join(root, "other/hot.ts"), content);
+      fs.writeFileSync(path.join(root, "top.ts"), content);
+      gitCommit(root, `sibling ${content}`);
+    }
+    fs.writeFileSync(path.join(root, "pkg/src/b.ts"), "y");
+    gitCommit(root, "b");
+    const project = path.join(root, "pkg");
+    const index = fullScan(project, defaultConfig());
+    expect(index.meta.churn).toEqual({
+      head: git(root, "rev-parse", "HEAD").trim(),
+      paths: ["src/b.ts", "src/a.ts"],
+    });
+  });
+
+  test("leaves files the index may not hold, such as lockfiles and secrets, off the list", () => {
+    const root = makeProject({ "src/a.ts": "x", "pnpm-lock.yaml": "x", ".env": "SECRET=1" });
+    git(root, "init", "-q");
+    git(root, "add", "-f", ".env");
+    gitCommit(root, "initial");
+    for (const content of ["1", "2"]) {
+      fs.writeFileSync(path.join(root, "pnpm-lock.yaml"), content);
+      fs.writeFileSync(path.join(root, ".env"), `SECRET=${content}`);
+      git(root, "add", "-f", ".env");
+      gitCommit(root, `deps ${content}`);
+    }
+    expect(fullScan(root, defaultConfig()).meta.churn!.paths).toEqual(["src/a.ts"]);
+  });
+
   test("a refresh keeps at most 100 pins, dropping the least recently written", () => {
     const files: Record<string, string> = {};
     for (let i = 0; i < 101; i++) files[`f${String(i).padStart(3, "0")}.ts`] = "x";
