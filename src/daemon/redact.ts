@@ -38,10 +38,13 @@ const PEM =
 // name them (GITHUB_TOKEN, DB_PASSWORD, OPENAI_API_KEY). Without the prefix, `\b`
 // never fires between `_` and the key word, so those values went through unmasked.
 // The key word must still end the name: `max_tokens` and `token_count` stay as they are.
-// The match starts only where a name starts (the lookbehind), not at every `-` inside
-// one, so a long hyphenated run is scanned once rather than once per hyphen.
+// The match starts only where a name starts, not at every `-` inside one, so a long
+// hyphenated run is scanned once rather than once per hyphen. A name may follow
+// leading hyphens, as a command-line flag does (`--password=…`, `--api-key=…`):
+// the lookbehind refuses a start only when a name character comes before those hyphens,
+// and the lookahead keeps it from being tried inside a run of hyphens.
 const KEYED_VALUES: RegExp[] = [
-  /(?<![a-z0-9_-])((?:[a-z0-9]+[_-])*(?:password|passwd|pwd|secret|secret_key|api_key|apikey|api-key|access_token|auth_token|token|aws_secret_access_key|aws_session_token)\b\\?["']?\s*[:=]\s*\\?["']?)([^\s"'\\,;]+)/gi,
+  /(?=[a-z0-9])(?<![a-z0-9_]-*)((?:[a-z0-9]+[_-]+)*(?:password|passwd|pwd|secret|secret_key|api_key|apikey|api-key|access_token|auth_token|token|aws_secret_access_key|aws_session_token)\b\\?["']?\s*[:=]\s*\\?["']?)([^\s"'\\,;]+)/gi,
   /\b([a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:)([^\s@/]+)(?=@)/gi,
   /\b(authorization\s*:\s*(?:(?:bearer|basic|token|digest)\s+)?)([^\s"'\\,;]+)/gi,
 ];

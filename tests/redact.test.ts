@@ -93,6 +93,14 @@ const KEYED_ROWS: [string, string][] = [
   ['{"stripe-api-key": "abc"}', '{"stripe-api-key": "[redacted]"}'],
   ["SECRET_KEY=django-insecure", "SECRET_KEY=[redacted]"],
   ["DJANGO_SECRET_KEY=abc", "DJANGO_SECRET_KEY=[redacted]"],
+  // Command-line flags: leading hyphens before the name.
+  ["mysql --password=hunter2", "mysql --password=[redacted]"],
+  ["curl --api-key=abc123", "curl --api-key=[redacted]"],
+  ["gh --token=abc123", "gh --token=[redacted]"],
+  ["tool -token=abc123", "tool -token=[redacted]"],
+  ["cli --db-password=hunter2", "cli --db-password=[redacted]"],
+  ["foo--password=hunter2", "foo--password=[redacted]"],
+  ["APP__SECRET=abc", "APP__SECRET=[redacted]"],
   ["password=", "password="],
   ['{"api_key": ""}', '{"api_key": ""}'],
 ];
