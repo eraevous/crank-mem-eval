@@ -85,6 +85,14 @@ const KEYED_ROWS: [string, string][] = [
   ],
   ["-----BEGIN " + "PRIVATE KEY-----\nMIIabc\n-----END " + "PRIVATE KEY-----", "[redacted]"],
   ["a -----BEGIN " + "PRIVATE KEY-----\nMIIabc\nMIIdef", "a [redacted]"],
+  // Environment-variable names: a key word after a prefix joined by `_` or `-`.
+  ["GITHUB_TOKEN=abc123", "GITHUB_TOKEN=[redacted]"],
+  ["export DB_PASSWORD=hunter2", "export DB_PASSWORD=[redacted]"],
+  ["OPENAI_API_KEY=xyz789", "OPENAI_API_KEY=[redacted]"],
+  ["CLIENT_SECRET: s3cr3t", "CLIENT_SECRET: [redacted]"],
+  ['{"stripe-api-key": "abc"}', '{"stripe-api-key": "[redacted]"}'],
+  ["SECRET_KEY=django-insecure", "SECRET_KEY=[redacted]"],
+  ["DJANGO_SECRET_KEY=abc", "DJANGO_SECRET_KEY=[redacted]"],
   ["password=", "password="],
   ['{"api_key": ""}', '{"api_key": ""}'],
 ];
@@ -99,6 +107,9 @@ describe("redact leaves near-misses alone", () => {
   test.each([
     "max_tokens: 4096",
     "token_count = 5",
+    "MAX_TOKENS=4096",
+    "PASSWORD_MIN_LENGTH=12",
+    "SECRET_ROTATION_DAYS: 30",
     "sk-short",
     "the password is wrong",
     "eyJhbGci",

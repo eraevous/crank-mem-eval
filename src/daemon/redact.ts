@@ -34,8 +34,14 @@ const PEM =
 
 // Each keeps group 1 (the key and its punctuation) and masks group 2 (the value).
 // A value runs to the next whitespace, quote, backslash, comma or semicolon.
+// The key word may follow a prefix joined by `_` or `-`, as environment variables
+// name them (GITHUB_TOKEN, DB_PASSWORD, OPENAI_API_KEY). Without the prefix, `\b`
+// never fires between `_` and the key word, so those values went through unmasked.
+// The key word must still end the name: `max_tokens` and `token_count` stay as they are.
+// The match starts only where a name starts (the lookbehind), not at every `-` inside
+// one, so a long hyphenated run is scanned once rather than once per hyphen.
 const KEYED_VALUES: RegExp[] = [
-  /\b((?:password|passwd|pwd|secret|api_key|apikey|api-key|access_token|auth_token|token|aws_secret_access_key|aws_session_token)\b\\?["']?\s*[:=]\s*\\?["']?)([^\s"'\\,;]+)/gi,
+  /(?<![a-z0-9_-])((?:[a-z0-9]+[_-])*(?:password|passwd|pwd|secret|secret_key|api_key|apikey|api-key|access_token|auth_token|token|aws_secret_access_key|aws_session_token)\b\\?["']?\s*[:=]\s*\\?["']?)([^\s"'\\,;]+)/gi,
   /\b([a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:)([^\s@/]+)(?=@)/gi,
   /\b(authorization\s*:\s*(?:(?:bearer|basic|token|digest)\s+)?)([^\s"'\\,;]+)/gi,
 ];
