@@ -9,17 +9,25 @@ const PROGRAM_FIRST = new Set(["sed", "awk"]);
 const CODE_READERS = new Set(["outline", "unfold"]);
 const REDIRECTS = new Set([">", ">>", "2>", "&>"]);
 
+/**
+ * A heredoc operator and its delimiter word. `<<<` is a here-string, which has no body, so the
+ * lookarounds keep it out. Group 1 is `-` for `<<-`, group 3 the delimiter.
+ */
+const HEREDOC = /(?<!<)<<(-?)(?!<)\s*(['"]?)([\w.-]+)\2/g;
+
 /** The command with each heredoc body, terminator line included, removed. */
 function dropHeredocs(command: string): string {
   const kept: string[] = [];
-  const pending: string[] = [];
+  const pending: { word: string; tabs: boolean }[] = [];
   for (const line of command.split("\n")) {
     if (pending.length > 0) {
-      if (line === pending[0]) pending.shift();
+      // Bash strips leading tabs from every `<<-` body line, the terminator included.
+      const end = pending[0]!;
+      if ((end.tabs ? line.replace(/^\t+/, "") : line) === end.word) pending.shift();
       continue;
     }
     kept.push(line);
-    for (const m of line.matchAll(/<<-?\s*(['"]?)([\w.-]+)\1/g)) pending.push(m[2]!);
+    for (const m of line.matchAll(HEREDOC)) pending.push({ word: m[3]!, tabs: m[1] === "-" });
   }
   return kept.join("\n");
 }
@@ -82,7 +90,7 @@ function readerArgs(rest: string[]): string[] {
   const args: string[] = [];
   for (let i = 0; i < rest.length; i++) {
     const w = rest[i]!;
-    if (REDIRECTS.has(w) || w === "<<") i++;
+    if (REDIRECTS.has(w) || w === "<<" || w === "<<-") i++;
     else if (w.startsWith(">") || w === "<" || w.startsWith("<<") || w.startsWith("-")) continue;
     else args.push(w);
   }

@@ -40,4 +40,19 @@ describe("shellReadPaths", () => {
     for (const [command, paths] of table)
       expect([command, shellReadPaths(command)]).toEqual([command, paths]);
   });
+
+  test("a heredoc body ends where bash ends it, so the reads after it still count", () => {
+    const table: Array<[string, string[]]> = [
+      // `<<-` strips leading tabs, so its terminator line may be tab-indented.
+      ["cat <<-EOF > out.txt\n\tcat secret.ts\n\tEOF\ncat a.ts", ["a.ts"]],
+      ["cat <<- 'EOF'\n\tbody\n\t\tEOF\nsed -n 1p a.ts", ["a.ts"]],
+      // Plain `<<` keeps tabs: an indented line is body, not the terminator.
+      ["cat <<EOF\n\tEOF\ncat secret.ts\nEOF\ncat a.ts", ["a.ts"]],
+      // `<<<` is a here-string: no body follows, so later lines are commands.
+      ["grep x <<< word\ncat a.ts", ["a.ts"]],
+      ["grep x <<<word\nword\ncat a.ts", ["a.ts"]],
+    ];
+    for (const [command, paths] of table)
+      expect([command, shellReadPaths(command)]).toEqual([command, paths]);
+  });
 });
