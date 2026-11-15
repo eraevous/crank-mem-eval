@@ -55,7 +55,7 @@ export function machineChecks(): Check[] {
     out.push(check("warn", "dashboard", "left out at setup; `crank-mem setup` adds it"));
   else
     out.push(
-      dashboardCurrent(path.join(dashboardDir(), "dist"))
+      dashboardCurrent(path.join(dashboardDir(), "dist"), cliVersion())
         ? check("ok", "dashboard", "built for this version")
         : check("warn", "dashboard", "not built for this version; run `crank-mem setup`"),
     );

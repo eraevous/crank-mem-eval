@@ -1,4 +1,4 @@
-# 0013 — Consolidation reads an evidence bundle, not the project (design, not probe-verified)
+# 0015 — Consolidation reads an evidence bundle, not the project (design, not probe-verified)
 
 Date: 2026-11-10. Status: accepted for the private evaluation copy (branch `aegis/safety-fixes`;
 see `ATTRIBUTION.md`). It is offered to the author, not adopted upstream.

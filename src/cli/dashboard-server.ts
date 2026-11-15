@@ -4,22 +4,34 @@ import * as http from "node:http";
 import type { AddressInfo } from "node:net";
 import * as path from "node:path";
 import { CONFIG_FILE, CRANK_DIR, loadConfig } from "../hooks/lib/config.ts";
-import { memoryPath, memoryStatus, withReader, type MemoryRead } from "../hooks/lib/memory.ts";
+import { isProjectFile } from "../hooks/lib/hook-io.ts";
+import { memoryPath, memoryStatus, withReader } from "../hooks/lib/memory.ts";
+import { relatedFiles } from "../hooks/lib/related-files.ts";
+import { loadIndex } from "../hooks/lib/store.ts";
 import { readUsage } from "../hooks/lib/usage.ts";
-import { readStopState } from "../hooks/lib/user-state.ts";
 import {
+  ACTIVITY_DAYS,
   isObservationType,
   isProposalState,
   type ConsolidationRow,
   type ObservationLine,
   type ProposalRow,
   type StaleRow,
+  type UpdateStatus,
 } from "../hooks/lib/wire.ts";
 import { EMBED_MODEL } from "../daemon/embedder.ts";
 import { queryVector } from "./recall.ts";
-import { registeredRoots } from "./registry.ts";
-import { captureRows } from "./stats.ts";
-import { usageMetrics } from "./usage-metrics.ts";
+import { registeredRoots } from "../hooks/lib/registry.ts";
+import { captureSummary } from "./stats.ts";
+import {
+  checkDue,
+  checkNow,
+  laggingProjects,
+  readUpdateState,
+  updateAvailable,
+} from "./updates.ts";
+import { activityDays, usageMetrics, windowStart } from "./usage-metrics.ts";
+import { cliVersion, installedCopy, releaseBase } from "./version.ts";
 
 // The dashboard's HTTP server: loopback only, and every request carries the
 // session cookie, which the URL's `?token=` trades for once. The checks run
@@ -105,18 +117,8 @@ function projectById(id: string): Project | null {
   return listProjects().find((p) => p.id === id) ?? null;
 }
 
-/** Green: a readable store taking digests. Grey: digests off. Amber: anything needing a look. */
-function projectDot(root: string, memory: MemoryRead["status"]): "green" | "amber" | "grey" {
-  if (memory !== "open") return "amber";
-  if (!loadConfig(path.join(root, CRANK_DIR)).digest) return "grey";
-  return readStopState() === null ? "green" : "amber";
-}
-
 function projectsBody(): string {
-  const projects = listProjects().map((p) => {
-    const memory = memoryStatus(memoryPath(p.root));
-    return { ...p, dot: projectDot(p.root, memory), memory };
-  });
+  const projects = listProjects().map((p) => ({ ...p, memory: memoryStatus(memoryPath(p.root)) }));
   return JSON.stringify({ projects });
 }
 
@@ -161,7 +163,14 @@ async function observations(root: string, params: URLSearchParams): Promise<Answ
   const body = await withReader(memoryPath(root), async (memory) => {
     if (q !== null) {
       const vector = await queryVector(memory, q);
-      const lines = memory.search({ ...filters, text: q, vector, sinceMs: null, limit: PAGE });
+      const lines = memory.search({
+        ...filters,
+        text: q,
+        vector,
+        sinceMs: null,
+        limit: PAGE,
+        related: relatedFiles(loadIndex(path.join(root, CRANK_DIR)), q),
+      });
       return { rows: lines, next: null, mode: vector !== null ? "hybrid" : "keyword" };
     }
     const page = pageOf(
@@ -232,18 +241,33 @@ async function consolidations(root: string, params: URLSearchParams): Promise<An
   return { status: 200, body };
 }
 
-/** `GET …/health`: the capture rows `crank-mem stats` prints, without its padding. */
+/** `GET …/health`: the project's `HealthSummary`. */
 async function health(root: string): Promise<Answer> {
-  const rows = await captureRows(root, loadConfig(path.join(root, CRANK_DIR)));
-  return { status: 200, body: { rows } };
+  return { status: 200, body: await captureSummary(root, loadConfig(path.join(root, CRANK_DIR))) };
+}
+
+/** `GET …/activity`: one `ActivityDay` per local day of the window, or the store's note. */
+async function activity(root: string, params: URLSearchParams): Promise<Answer> {
+  const days = ACTIVITY_DAYS.find((d) => String(d) === params.get("days"));
+  if (days === undefined) return { status: 400 };
+  const start = windowStart(Date.now(), days);
+  const body = await withReader(memoryPath(root), (memory) => ({
+    days: activityDays(memory.activity(start.getTime()), start, days),
+  }));
+  return { status: 200, body };
 }
 
 /** `GET …/usage`: the Usage view's metrics over the log; a store that does not open gives no titles, and its note. */
 async function usage(root: string, params: URLSearchParams): Promise<Answer> {
-  const days = ([7, 30, 90] as const).find((d) => String(d) === params.get("days"));
+  const days = ACTIVITY_DAYS.find((d) => String(d) === params.get("days"));
   const manual = params.get("manual") ?? "0";
   if (days === undefined || (manual !== "0" && manual !== "1")) return { status: 400 };
-  const events = readUsage(path.dirname(memoryPath(root)));
+  // A new line, never an assignment: readUsage hands back cached lines until the file changes.
+  const events = readUsage(path.dirname(memoryPath(root))).map((line) =>
+    line.channel === "file-history"
+      ? { ...line, empty: line.empty.filter((p) => isProjectFile(root, p)) }
+      : line,
+  );
   const opts = { nowMs: Date.now(), days, manual: manual === "1" };
   const body = await withReader(memoryPath(root), (memory) =>
     usageMetrics(events, {
@@ -274,6 +298,7 @@ async function projectRoute(
   if (route === "/consolidations") return consolidations(project.root, params);
   if (route === "/health") return health(project.root);
   if (route === "/usage") return usage(project.root, params);
+  if (route === "/activity") return activity(project.root, params);
   const one = /^\/observations\/([^/]*)$/.exec(route);
   if (one) return observation(project.root, one[1]!);
   return null;
@@ -336,6 +361,32 @@ function serveProjects(res: http.ServerResponse, url: URL): boolean {
   return true;
 }
 
+function updateStatus(): UpdateStatus {
+  const state = readUpdateState();
+  const latest = state.latest && {
+    version: state.latest.version,
+    releasedAt: state.latest.releasedAt,
+    notesUrl: `${releaseBase()}/tag/${state.latest.tag}`,
+  };
+  return {
+    installed: cliVersion(),
+    installedCopy: installedCopy(),
+    latest,
+    available: updateAvailable(state),
+    checkedAtMs: state.checkedAtMs,
+    error: state.error,
+    auto: state.auto,
+    checkDaily: state.checkDaily,
+    behind: laggingProjects(cliVersion()),
+  };
+}
+
+function serveUpdates(res: http.ServerResponse, url: URL): boolean {
+  if (url.pathname !== "/api/updates") return false;
+  sendAnswer(res, { status: 200, body: updateStatus() });
+  return true;
+}
+
 function serveProjectRoute(res: http.ServerResponse, url: URL): boolean {
   const scoped = /^\/api\/projects\/([^/]+)(\/.*)$/.exec(url.pathname);
   if (!scoped) return false;
@@ -370,6 +421,7 @@ export async function serveDashboard(opts: {
   port: number;
   distDir: string;
   token: string;
+  checkEveryMs: number;
 }): Promise<{ port: number; close(): Promise<void> }> {
   const server = http.createServer((req, res) => {
     for (const [name, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(name, value);
@@ -381,6 +433,7 @@ export async function serveDashboard(opts: {
     if (tradeToken(res, url, opts.token)) return;
     if (refuseCookie(req, res, opts.token)) return;
     if (serveProjects(res, url)) return;
+    if (serveUpdates(res, url)) return;
     if (serveProjectRoute(res, url)) return;
     serveStatic(res, url, opts.distDir);
   });
@@ -391,10 +444,23 @@ export async function serveDashboard(opts: {
       resolve();
     });
   });
+  // A tick while this server's own check is pending skips, so each due check fetches once.
+  let checking = false;
+  const checkIfDue = () => {
+    if (checking || !checkDue(readUpdateState(), Date.now())) return;
+    checking = true;
+    // checkNow records its own failures; a throw here means update.json could not be written.
+    void checkNow()
+      .catch(() => {})
+      .finally(() => (checking = false));
+  };
+  checkIfDue();
+  const timer = setInterval(checkIfDue, opts.checkEveryMs);
   return {
     port: (server.address() as AddressInfo).port,
     close: () =>
       new Promise((resolve) => {
+        clearInterval(timer);
         server.close(() => resolve());
         server.closeAllConnections();
       }),

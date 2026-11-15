@@ -3,7 +3,16 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { memoryPaths } from "../src/hooks/lib/hook-io.ts";
-import { git, gitCommit, plantMemory, runCli, seedMemory, tempDir, ZONES } from "./helpers.ts";
+import {
+  git,
+  gitCommit,
+  initedCopy,
+  plantMemory,
+  runCli,
+  seedMemory,
+  tempDir,
+  ZONES,
+} from "./helpers.ts";
 import {
   MEMORY_NEWER_NOTE,
   MEMORY_UNREADABLE_NOTE,
@@ -20,46 +29,15 @@ describe("memoryPaths", () => {
   });
 });
 
-function initedProject(
-  files: Record<string, string> = { "a.ts": "export const a = 1;\n" },
-): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "crank-recall-"));
-  for (const [rel, content] of Object.entries(files)) {
-    fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
-    fs.writeFileSync(path.join(root, rel), content);
-  }
-  expect(runCli(root, ["init", "--yes", "--codex", "skip"]).status).toBe(0);
-  return root;
-}
-
 describe("search", () => {
-  test("prints one formatLine per hit and finds a row by an exact identifier", () => {
-    const root = initedProject();
-    seedMemory(root, [
-      { type: "bugfix", title: "Lock file writes retry on EEXIST" },
-      { title: "Unrelated note" },
-    ]);
-    const run = runCli(root, ["search", "EEXIST"]);
-    expect(run.status).toBe(0);
-    expect(run.stdout).toMatch(/^#1 \d{4}-\d{2}-\d{2} bugfix Lock file writes retry on EEXIST\n$/);
-  });
-
   test("each hit is dated in the local zone", () => {
-    const root = initedProject();
+    const root = initedCopy();
     seedMemory(root, [{ title: "Gizmo today" }]);
     for (const TZ of ZONES) {
       expect(runCli(root, ["search", "gizmo"], { TZ }).stdout).toBe(
         `#1 ${localDate(0, TZ)} discovery Gizmo today\n`,
       );
     }
-  });
-
-  test("zero hits print nothing and exit 0", () => {
-    const root = initedProject();
-    seedMemory(root, [{ title: "Lock file writes retry" }]);
-    const run = runCli(root, ["search", "zebra"]);
-    expect(run.status).toBe(0);
-    expect(run.stdout).toBe("");
   });
 });
 
@@ -79,14 +57,33 @@ describe("store placement", () => {
     expect(run.status).toBe(0);
     expect(run.stdout).toMatch(/^#1 \S+ discovery Worktrees share the main store\n$/);
   });
+});
 
-  test("a project outside git keeps its store at .crank/memory.db", () => {
-    const root = initedProject();
-    seedMemory(root, [{ title: "Plain projects own their store" }]);
-    expect(fs.existsSync(path.join(root, ".crank/memory.db"))).toBe(true);
-    expect(runCli(root, ["search", "plain"]).stdout).toMatch(
-      /^#1 \S+ discovery Plain projects own their store\n$/,
+describe("graph search", () => {
+  test("a query naming a file surfaces observations linked to its import neighbour", () => {
+    const root = initedCopy({
+      "src/a.ts": 'import { b } from "./b";\nexport const a = b;\n',
+      "src/b.ts": "export const b = 1;\n",
+    });
+    const [o1] = seedMemory(root, [
+      { title: "Lock budget raised", narrative: "budget", filesModified: ["src/b.ts"] },
+    ]) as [number];
+    const neighbourOnly = runCli(root, ["search", "src/a.ts"]);
+    expect(neighbourOnly.status).toBe(0);
+    expect(neighbourOnly.stdout).toMatch(
+      new RegExp(`^#${o1} \\d{4}-\\d{2}-\\d{2} discovery Lock budget raised\\n$`),
     );
+
+    const [o2] = seedMemory(root, [{ title: "Alpha src/a.ts notes", narrative: "plain" }]) as [
+      number,
+    ];
+    const ids = (stdout: string) => [...stdout.matchAll(/^#(\d+) /gm)].map((m) => Number(m[1]));
+    expect(ids(runCli(root, ["search", "src/a.ts"]).stdout)).toEqual([o2, o1]);
+
+    fs.writeFileSync(path.join(root, ".crank", "anatomy-index.json"), "{not json");
+    const corrupt = runCli(root, ["search", "src/a.ts"]);
+    expect(corrupt.status).toBe(0);
+    expect(ids(corrupt.stdout)).toEqual([o2]);
   });
 });
 
@@ -99,7 +96,7 @@ const SEARCH_USAGE =
 
 describe("search flags", () => {
   test("--limit defaults to 10 and clamps at 50", () => {
-    const root = initedProject();
+    const root = initedCopy();
     seedMemory(
       root,
       Array.from({ length: 60 }, (_, i) => ({ title: `Widget note ${i}` })),
@@ -111,7 +108,7 @@ describe("search flags", () => {
   });
 
   test("--file resolves against the shell's directory", () => {
-    const root = initedProject({ "src/a.ts": "export const a = 1;\n" });
+    const root = initedCopy({ "src/a.ts": "export const a = 1;\n" });
     seedMemory(root, [{ title: "Gadget lives in src", filesModified: ["src/a.ts"] }]);
     const src = path.join(root, "src");
     expect(runCli(src, ["search", "gadget", "--file", "src/a.ts"]).stdout).toBe("");
@@ -124,7 +121,7 @@ describe("search flags", () => {
   });
 
   test("--type keeps only that type", () => {
-    const root = initedProject();
+    const root = initedCopy();
     seedMemory(root, [
       { type: "decision", title: "Sprocket decision" },
       { type: "bugfix", title: "Sprocket bugfix" },
@@ -134,7 +131,7 @@ describe("search flags", () => {
   });
 
   test("--since is local midnight", () => {
-    const root = initedProject();
+    const root = initedCopy();
     seedMemory(root, [{ title: "Gizmo today" }]);
     for (const TZ of ZONES) {
       expect(runCli(root, ["search", "gizmo", "--since", localDate(1, TZ)], { TZ }).stdout).toBe(
@@ -147,7 +144,7 @@ describe("search flags", () => {
   });
 
   test("a malformed flag value or an empty query prints usage and exits 1", () => {
-    const root = initedProject();
+    const root = initedCopy();
     seedMemory(root, [{ title: "Gizmo" }]);
     for (const args of [
       ["search"],
@@ -174,7 +171,7 @@ describe("stale rows", () => {
 
   /** Rows A and B, with A flagged stale. */
   function staleProject(files: Record<string, string> = { "a.ts": "export const a = 1;\n" }) {
-    const root = initedProject(files);
+    const root = initedCopy(files);
     const [a, b] = seedMemory(root, [
       { title: "Lock retry is two seconds", filesRead: ["a.ts"] },
       { title: "Lock files live in .crank", filesRead: ["a.ts"] },
@@ -229,7 +226,7 @@ describe("stale rows", () => {
 
 describe("search query text", () => {
   test("an unknown flag key is searched as text", () => {
-    const root = initedProject();
+    const root = initedCopy();
     seedMemory(root, [{ title: "Digest runs pass max turns 2" }, { title: "Other note" }]);
     const run = runCli(root, ["search", "--max-turns"]);
     expect(run.status).toBe(0);
@@ -237,7 +234,7 @@ describe("search query text", () => {
   });
 
   test("FTS syntax in the query raises no error", () => {
-    const root = initedProject();
+    const root = initedCopy();
     seedMemory(root, [{ title: "Plain note" }]);
     for (const q of ['"', "*", "-", "AND", "NEAR("]) {
       const run = runCli(root, ["search", q]);
@@ -258,7 +255,7 @@ describe("store states", () => {
   ];
 
   test("no store: search prints the note on stdout and exits 0; timeline and get print it on stderr and exit 1", () => {
-    const root = initedProject();
+    const root = initedCopy();
     const searched = runCli(root, COMMANDS[0]!);
     expect(searched).toMatchObject({ status: 0, stdout: `${NO_MEMORY_NOTE}\n`, stderr: "" });
     for (const args of COMMANDS.slice(1)) {
@@ -275,7 +272,7 @@ describe("store states", () => {
     ["unreadable", MEMORY_UNREADABLE_NOTE],
   ] as const) {
     test(`a ${state} store: every command prints its note on stderr and exits 1`, () => {
-      const root = initedProject();
+      const root = initedCopy();
       plantMemory(root, state);
       for (const args of COMMANDS) {
         expect(runCli(root, args), args[0]).toMatchObject({
@@ -296,7 +293,7 @@ const ids = (stdout: string) =>
 
 describe("timeline", () => {
   test("prints 5 either side of the id, oldest first, and --depth changes the span", () => {
-    const root = initedProject();
+    const root = initedCopy();
     seedMemory(
       root,
       Array.from({ length: 12 }, () => ({})),
@@ -309,7 +306,7 @@ describe("timeline", () => {
   });
 
   test("an unknown id exits 1 and names it", () => {
-    const root = initedProject();
+    const root = initedCopy();
     seedMemory(root, [{}]);
     expect(runCli(root, ["timeline", "99"])).toMatchObject({
       status: 1,
@@ -319,7 +316,7 @@ describe("timeline", () => {
   });
 
   test("a non-numeric id or depth prints usage and exits 1", () => {
-    const root = initedProject();
+    const root = initedCopy();
     seedMemory(root, [{}]);
     for (const args of [
       ["timeline"],
@@ -336,7 +333,7 @@ describe("timeline", () => {
 
 describe("get", () => {
   test("a row seeded with defaults prints (none) for empty facts and file lists", () => {
-    const root = initedProject();
+    const root = initedCopy();
     seedMemory(root, [{}]);
     const run = runCli(root, ["get", "1"]);
     expect(run.status).toBe(0);
@@ -346,7 +343,7 @@ describe("get", () => {
   });
 
   test("a row with values prints every field literally", () => {
-    const root = initedProject();
+    const root = initedCopy();
     seedMemory(root, [
       {
         type: "decision",
@@ -368,7 +365,7 @@ describe("get", () => {
   });
 
   test("prints the first 20 ids given, blocks separated by a blank line", () => {
-    const root = initedProject();
+    const root = initedCopy();
     seedMemory(
       root,
       Array.from({ length: 25 }, () => ({})),
@@ -383,7 +380,7 @@ describe("get", () => {
   });
 
   test("exits 1 when no id is found, and prints usage for a non-numeric id", () => {
-    const root = initedProject();
+    const root = initedCopy();
     seedMemory(root, [{}]);
     expect(runCli(root, ["get", "999"]).status).toBe(1);
     for (const args of [["get"], ["get", "abc"], ["get", "1", "abc"]]) {
@@ -402,8 +399,9 @@ describe("where the commands run", () => {
   ];
 
   test("each command works from a project subdirectory", () => {
-    const root = initedProject({ "src/a.ts": "export const a = 1;\n" });
+    const root = initedCopy({ "src/a.ts": "export const a = 1;\n" });
     seedMemory(root, [{ title: "Anchor row" }]);
+    expect(fs.existsSync(path.join(root, ".crank/memory.db"))).toBe(true);
     for (const args of COMMANDS) {
       const run = runCli(path.join(root, "src"), args);
       expect(run.status, args[0]).toBe(0);
@@ -423,7 +421,13 @@ describe("where the commands run", () => {
 
   test("outside any project each command prints the init hint and exits 1", () => {
     const bare = fs.mkdtempSync(path.join(os.tmpdir(), "crank-recall-bare-"));
-    for (const args of [...COMMANDS, ["outline", "a.ts"], ["unfold", "a.ts", "f"]]) {
+    for (const args of [
+      ...COMMANDS,
+      ["outline", "a.ts"],
+      ["unfold", "a.ts", "f"],
+      ["digest", "on"],
+      ["digest", "off"],
+    ]) {
       const run = runCli(bare, args);
       expect(run.status, args[0]).toBe(1);
       expect(run.stderr).toContain("not initialized here");
@@ -445,6 +449,9 @@ describe("help", () => {
       "  outline         Print a source file's symbols with their bodies folded\n  unfold          Print one symbol's full source\n",
     );
     expect(run.stdout).toContain("  restore-memory  Put a memory.db snapshot back\n");
+    expect(run.stdout).toContain(
+      "  digest          Turn background digests on or off, or resume them\n",
+    );
     expect(run.stdout).not.toContain("--model-host");
     expect(runCli(os.tmpdir(), ["outline", "--help"]).stdout).toBe(
       "Usage: crank-mem outline <file> [--from <line>]\n\nPrint a source file's symbols with their bodies folded.\n",

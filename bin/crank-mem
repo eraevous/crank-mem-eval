@@ -1,12 +1,19 @@
 #!/bin/sh
 # crank-mem launcher: prefer bun, else node >= 23.6 (both run .ts directly).
-# Lives in the clone; put it on PATH via symlink:
+# An installed copy runs it through <crank home>/current; `crank-mem self-install`
+# links it onto PATH as ~/.local/bin/crank-mem -> <crank home>/current/bin/crank-mem.
+# For development, link a clone's launcher instead:
 #   ln -s "<repo>/bin/crank-mem" ~/.local/bin/crank-mem
 DIR=$(CDPATH= cd -- "$(dirname -- "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)
 CLI="$DIR/../src/cli/main.ts"
 
+# --env-file=/dev/null: bun otherwise loads `.env` (and `.env.local`, `.env.<NODE_ENV>`) from the
+# working directory, so a checkout could set CRANK_RELEASE_URL (where `self-update` downloads and
+# runs code from) or any other CRANK_* setting. Naming an empty env file replaces the default set;
+# `--no-env-file` would be clearer but older bun (e.g. 1.2.14) ignores it. Node loads no .env
+# unless asked. (crank-mem-eval; Codex security reviews on PR #8.)
 if command -v bun >/dev/null 2>&1; then
-  exec bun "$CLI" "$@"
+  exec bun --env-file=/dev/null "$CLI" "$@"
 fi
 
 if command -v node >/dev/null 2>&1; then

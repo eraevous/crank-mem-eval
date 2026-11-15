@@ -35,12 +35,28 @@ export type HooksMap = Record<string, HookGroup[]>;
 
 type Agent = "claude" | "codex";
 
+/**
+ * The bun runner. `--env-file=/dev/null` stops bun loading the project's `.env`
+ * (and `.env.local`, `.env.<NODE_ENV>`) into the hook, and so into a daemon the
+ * hook starts: a checkout must not set crank-mem's environment, such as
+ * `CRANK_HOME`, proxy or TLS settings (option 1, chosen on crank-mem-eval#8).
+ * `--no-env-file` is clearer but bun 1.2.14 ignores it. Node loads no `.env`
+ * unless asked.
+ */
+const BUN_RUNNER = "bun --env-file=/dev/null";
+/** Runners older releases wrote, still recognised so `upgrade` replaces them. */
+const LEGACY_RUNNERS = ["bun"];
+
+function runnerFor(runtime: CrankConfig["runtime"]): string {
+  return runtime === "bun" ? BUN_RUNNER : "node --disable-warning=ExperimentalWarning";
+}
+
 function commandParts(
   runtime: CrankConfig["runtime"],
   script: string,
   agent: Agent,
 ): { runner: string; p: string } {
-  const runner = runtime === "bun" ? "bun" : "node --disable-warning=ExperimentalWarning";
+  const runner = runnerFor(runtime);
   // Claude expands $CLAUDE_PROJECT_DIR; Codex runs hooks with the project cwd.
   const p =
     agent === "claude" ? `"$CLAUDE_PROJECT_DIR"/.crank/hooks/${script}` : `.crank/hooks/${script}`;
@@ -62,9 +78,36 @@ function commandForms(script: string): Set<string> {
     for (const agent of ["claude", "codex"] as const) {
       const { runner, p } = commandParts(runtime, script, agent);
       forms.add(`${runner} ${p}`).add(hookCommand(runtime, script, agent));
+      if (runtime === "bun")
+        for (const legacy of LEGACY_RUNNERS)
+          forms.add(`${legacy} ${p}`).add(`[ ! -f ${p} ] || ${legacy} ${p}`);
     }
   }
   return forms;
+}
+
+/** Every hook script crank-mem wires, for either agent. */
+const HOOK_SCRIPTS = [
+  "session-start.ts",
+  "post-write.ts",
+  "post-read.ts",
+  "stop.ts",
+  "session-end.ts",
+  "subagent-start.ts",
+];
+
+let generatedForms: Set<string> | undefined;
+
+/**
+ * True only for a command exactly in a form crank-mem emits or has emitted, for
+ * one of its own scripts. A command that merely contains `.crank/hooks/` (one a
+ * repository edited to append shell, say) is not, so it never gets Codex trust
+ * written for it and Codex asks the user to review it.
+ */
+export function isGeneratedHookCommand(command: string | undefined): boolean {
+  if (!command) return false;
+  generatedForms ??= new Set(HOOK_SCRIPTS.flatMap((script) => [...commandForms(script)]));
+  return generatedForms.has(command);
 }
 
 /**

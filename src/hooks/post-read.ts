@@ -7,6 +7,7 @@ import {
   emitAdditionalContext,
   runAdvisoryHook,
   memoryPaths,
+  isProjectFile,
   type HookPayload,
 } from "./lib/hook-io.ts";
 import { CRANK_DIR, loadConfig } from "./lib/config.ts";
@@ -76,7 +77,9 @@ function histories(memory: MemoryReader, root: string, unseen: string[]): Histor
     const tag = changedSince(path.join(root, rel), lines[0]!.createdAtMs)
       ? " [file changed since]"
       : "";
-    const section = `History of ${rel}:${tag}\n` + lines.map(formatLine).join("\n");
+    const section =
+      `History of ${rel} (open one: \`crank-mem get <id>\`):${tag}\n` +
+      lines.map(formatLine).join("\n");
     if (Buffer.byteLength([...out.sections, section].join(SEP)) > MAX_BYTES) {
       out.cut = unseen.slice(i);
       break;
@@ -113,7 +116,7 @@ async function main(): Promise<void> {
   if (!stem) return;
   const agent = agentOf(payload);
 
-  const rels = memoryPaths(root, cwd, paths);
+  const rels = memoryPaths(root, cwd, paths).filter((r) => isProjectFile(root, r));
   if (rels.length === 0) return;
 
   const file = memoryPath(root);
