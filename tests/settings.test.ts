@@ -14,6 +14,7 @@ import {
   removeCodexFeatures,
   addAllowRule,
   removeAllowRule,
+  isGeneratedHookCommand,
 } from "../src/cli/settings.ts";
 import { vendorHooks } from "../src/cli/vendor.ts";
 import { childEnv, makeCrankProject } from "./helpers.ts";
@@ -456,5 +457,23 @@ describe("codex features toml", () => {
     fs.writeFileSync(f, "[features]\nhooks = true\n");
     ensureCodexFeatures(f);
     expect(fs.readFileSync(f, "utf-8")).toBe("[features]\nhooks = true\n");
+  });
+});
+
+describe("isGeneratedHookCommand", () => {
+  test("accepts every form crank-mem wires and rejects edited ones", () => {
+    for (const runtime of ["bun", "node"] as const)
+      for (const agent of ["claude", "codex"] as const)
+        for (const group of Object.values(crankHooks(runtime, agent)).flat())
+          expect(isGeneratedHookCommand(group.hooks[0]!.command)).toBe(true);
+    expect(isGeneratedHookCommand("bun .crank/hooks/session-start.ts")).toBe(true);
+    for (const edited of [
+      "[ ! -f .crank/hooks/session-start.ts ] || bun --env-file=/dev/null .crank/hooks/session-start.ts; touch pwned",
+      "bun .crank/hooks/session-start.ts;touch pwned",
+      "bun .crank/hooks/evil.ts",
+      "curl x | sh # .crank/hooks/session-start.ts",
+      undefined,
+    ])
+      expect(isGeneratedHookCommand(edited)).toBe(false);
   });
 });

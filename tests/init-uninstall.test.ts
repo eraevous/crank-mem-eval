@@ -608,6 +608,36 @@ describe("init → uninstall round-trip", () => {
     expect(fs.readFileSync(codexConfig, "utf-8")).toBe('model = "gpt-5.6"\n' + codexOwn);
   });
 
+  test("codex-trust write: upgrade leaves a repo-edited crank hook command untrusted", () => {
+    // A repository can append shell to a crank command in its committed
+    // .codex/hooks.json; merge keeps such a command as written, so trusting
+    // whatever mentions .crank/hooks/ would let Codex run the payload unasked.
+    const { root, codexHome } = makeProject();
+    const codexConfig = path.join(codexHome, "config.toml");
+    const hooksFile = path.join(root, ".codex/hooks.json");
+    const hooksJson = path.join(fs.realpathSync(root), ".codex/hooks.json");
+    cli(root, codexHome, "init", "--yes", "--codex", "merge", "--codex-trust", "write");
+    const startKey = `[hooks.state."${hooksJson}:session_start:0:0"]`;
+    const writeKey = `[hooks.state."${hooksJson}:post_tool_use:0:0"]`;
+    expect(fs.readFileSync(codexConfig, "utf-8")).toContain(startKey);
+
+    const wired = JSON.parse(fs.readFileSync(hooksFile, "utf-8"));
+    const handler = wired.hooks.SessionStart[0].hooks[0];
+    handler.command = `${handler.command}; touch pwned`;
+    fs.writeFileSync(hooksFile, JSON.stringify(wired, null, 2) + "\n");
+
+    const up = cli(root, codexHome, "upgrade");
+    expect(up.status).toBe(0);
+    // The edited command is kept as written, and its old entry is gone.
+    expect(
+      JSON.parse(fs.readFileSync(hooksFile, "utf-8")).hooks.SessionStart[0].hooks[0].command,
+    ).toBe(handler.command);
+    const toml = fs.readFileSync(codexConfig, "utf-8");
+    expect(toml).not.toContain(startKey);
+    expect(toml).toContain(writeKey);
+    expect(up.stdout).toContain("edited crank hook command(s) in .codex/hooks.json left untrusted");
+  });
+
   test("pre-existing user settings survive surgical uninstall byte-identical", () => {
     const userSettings =
       JSON.stringify(

@@ -111,9 +111,19 @@ export const claudeWiring: InstallItem = {
   },
 };
 
-function writeCrankTrust(codexHooks: string, backup: (file: string) => void): void {
+/**
+ * Writes trust for crank's generated hook commands only. A command that is not
+ * a generated form (a repository edited it, say) loses any entry it had, so
+ * Codex asks for a review before running it; returns the report lines saying so.
+ */
+function writeCrankTrust(codexHooks: string, backup: (file: string) => void): string[] {
   const t = crankTrust(codexHooks);
-  writeTrustEntries(userCodexConfigPath(), t.entries, t.staleKeys, backup);
+  writeTrustEntries(userCodexConfigPath(), t.entries, [...t.staleKeys, ...t.untrustedKeys], backup);
+  if (t.untrustedKeys.length === 0) return [];
+  return [
+    `  Codex trust: ${t.untrustedKeys.length} edited crank hook command(s) in ${path.basename(path.dirname(codexHooks))}/${path.basename(codexHooks)} left untrusted`,
+    ...CODEX_REVIEW_HINT,
+  ];
 }
 
 export const codexWiring: InstallItem = {
@@ -126,8 +136,9 @@ export const codexWiring: InstallItem = {
     ensureCodexFeatures(codexConfig, backup);
     const r = report(["  Codex: hooks wired into .codex/hooks.json"]);
     if (config.codex === "trust") {
-      writeCrankTrust(codexHooks, backup);
+      const untrusted = writeCrankTrust(codexHooks, backup);
       r.lines.push(`  Codex trust: trusted_hash entries written to ${userCodexConfigPath()}`);
+      r.lines.push(...untrusted);
     } else {
       r.lines.push(...CODEX_REVIEW_HINT);
     }
@@ -153,9 +164,10 @@ export const codexWiring: InstallItem = {
         );
       if (config.codex === "trust") {
         const s = codexTrustStatus(userCodexConfigPath(), root, codexHooks);
-        if (s.missing + s.stale + s.orphans > 0) {
-          writeCrankTrust(codexHooks, backup);
+        if (s.missing + s.stale + s.orphans + s.untrusted > 0) {
+          const untrusted = writeCrankTrust(codexHooks, backup);
           r.lines.push("  recomputed Codex trusted_hash entries");
+          r.lines.push(...untrusted);
         }
       }
     });
