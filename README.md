@@ -122,8 +122,11 @@ project, or `crank-mem upgrade --all` for every project in `~/.crank/projects.js
 A failed repair prints a warning, every other repair still runs, and the upgrade exits 1. An
 upgrade that changes nothing writes no backup.
 
-Hook commands are guarded, `[ ! -f <script> ] || bun <script>`, so a checkout that has the
-committed settings file but no `.crank/hooks/` exits 0 instead of reporting a hook error.
+Hook commands are guarded, `[ ! -f <script> ] || bun --env-file=/dev/null <script>`, so a
+checkout that has the committed settings file but no `.crank/hooks/` exits 0 instead of reporting
+a hook error. `--env-file=/dev/null` stops bun loading the project's `.env` files into the hook,
+and so into a daemon the hook starts: a checkout can't set crank-mem's environment, such as
+`CRANK_HOME` or proxy and TLS settings. Upgrade rewrites older command forms to this one.
 
 Codex hashes each hook command for its trust check. So the first upgrade that rewrites the Codex
 commands makes Codex ask once for a hooks review: open codex in the project and accept it. An
