@@ -223,9 +223,12 @@ function deleteOwnedFiles(crankDir: string): string[] {
   return left;
 }
 
+// Sorted: readdirSync returns the filesystem's own order (hash order on ext4),
+// and the "kept what other tools wrote" line prints this list, so an unsorted
+// list made that line, and the test that reads it, vary between machines.
 function readdirOrEmpty(dir: string): string[] {
   try {
-    return fs.readdirSync(dir);
+    return fs.readdirSync(dir).sort();
   } catch {
     return [];
   }
