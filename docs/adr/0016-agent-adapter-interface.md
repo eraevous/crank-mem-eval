@@ -80,6 +80,16 @@ export const AGENTS: readonly AgentAdapter[];      // [claude, codex]: install o
 export function agentNames(): string[];            // what --agents accepts, plus "both" as an alias for all
 ```
 
+- **Trust lifecycle (unchanged; written down because the interface exposes it).** Only the Codex
+  adapter's own `wiring` calls `trust`; nothing else does, so exposing the part triggers nothing.
+  - install (`apply`): only when `config.codex === "trust"`, after the hooks merge and the
+    `[features]` snippet; any other mode prints the review hint instead.
+  - repair: only in `trust` mode, and only when `status` finds a missing, stale, orphaned or
+    untrusted entry, so an already trusted install keeps the user's `config.toml` untouched.
+  - remove: only in `trust` mode, and **before** the hooks are stripped, because the keys are
+    computed from `hooks.json` as it stands.
+  - Failures stay inside `attemptRepair` / `attemptRemoval`, as now: reported, never thrown.
+  `doctor` may read `status` for any adapter that has it; it never writes.
 - `install.ts` keeps its ordered item list but takes the wiring items from `AGENTS` in order, so
   install, repair and remove output keeps today's order line for line.
 - `settings.ts` → `commandForms` iterates `AGENTS` instead of the literal pair, so every command
@@ -101,9 +111,23 @@ export function agentNames(): string[];            // what --agents accepts, plu
    `usage.ts` read `HookEvent` instead of `tool_name` and `isCodexPayload`.
 4. `readTranscript` on the Claude adapter; the daemon reaches `distill` through it.
 
-New tests (black-box where the behavior is reachable, per CLAUDE.md): `--agents` rejects a name
-not in the registry; `crankHooks` output for each adapter is byte-identical to today's, pinned by a
-golden; a payload owned by neither specific rule falls back to Claude.
+New tests (black-box where the behavior is reachable, per CLAUDE.md), **written before the move
+so they pin today's behavior** (Kate, review round 1):
+
+- `--agents` rejects a name not in the registry, and `both` still means every agent.
+- `crankHooks` output for each adapter is byte-identical to today's, pinned by a golden.
+- Precedence, not only fallback: a payload carrying Codex markers (`turn_id`, a `rollout-`
+  transcript) is Codex even when it also carries Claude-shaped fields; one with neither is Claude;
+  malformed or missing fields still exit 0.
+- Payload replay: reads, writes, deletions, moves and multi-path patches; relative and absolute
+  paths; containment rejection; the `.crank/` skip. Most of this exists in `tests/`; the step adds
+  only the gaps.
+- install → repair → remove for each `--agents` and `--codex` mode: files written, unrelated
+  settings preserved, report lines in order, exit status, a second repair changing nothing, and
+  trust written only under the conditions above.
+- A vendored hook run from the target project, not the clone (the existing `makeCrankProject`
+  tests already do this).
+- Transcript distillation pinned before `readTranscript` moves (step 4).
 
 ## Consequences
 
@@ -129,8 +153,7 @@ golden; a payload owned by neither specific rule falls back to Claude.
 
 ## Open questions
 
-- Should `trust` be a separate optional part, or simply part of the Codex adapter's `wiring`?
-  Keeping it separate lets `doctor` report trust for any agent that has it; folding it in is less
-  surface. This ADR keeps it separate.
+- ~~Should `trust` be separate or folded into `wiring`?~~ Separate, with the lifecycle above
+  (Kate, round 1: trust is security-sensitive, not only file wiring).
 - Should the hook half key on `hook_event_name` per agent (a mapping table), or keep today's
   per-script hooks? Today's scripts already match one event each, so this ADR keeps them.
