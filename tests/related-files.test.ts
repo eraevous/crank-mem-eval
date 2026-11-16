@@ -192,3 +192,19 @@ test("only path-like and identifier-shaped terms seed", () => {
   expect(relatedFiles(U, "my_mod")).toEqual({ seeds: ["x/my_mod.ts"], neighbours: [] });
   expect(relatedFiles(U, "my_mod.test")).toEqual({ seeds: ["x/my_mod.test.ts"], neighbours: [] });
 });
+
+test("path terms seed the same file however the relative path is spelled", () => {
+  const lock = { seeds: ["src/lock.ts"], neighbours: ["src/a.ts", "src/b.ts"] };
+  for (const q of [
+    "./src/lock.ts",
+    "src/./lock.ts",
+    "src//lock.ts",
+    "src/lib/../lock.ts",
+    "./lock.ts",
+  ]) {
+    expect(relatedFiles(G, q)).toEqual(lock);
+  }
+  expect(relatedFiles(G, "./lib/foo.ts").seeds).toEqual(["src/lib/foo.ts"]);
+  // A term that collapses below 3 characters seeds nothing, as an unnormalized one would.
+  expect(relatedFiles(idx({ "x/a.ts": {} }), "./a")).toEqual({ seeds: [], neighbours: [] });
+});
