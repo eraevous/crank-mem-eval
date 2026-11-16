@@ -42,10 +42,22 @@ function nodes(index: AnatomyIndex): Map<string, Node> {
   return out;
 }
 
+/**
+ * Index keys are normalized repo-relative paths (`src/a.ts`), so a path term is normalized the
+ * same way before matching: `./src/a.ts`, `src/./a.ts`, `src//a.ts` and `src/x/../a.ts` all
+ * name `src/a.ts`. Only terms containing `/` are touched; the length gate runs after, so a term
+ * that collapses to under 3 characters (`./a`) seeds nothing.
+ */
+function normalizePathTerm(term: string): string {
+  if (!term.includes("/")) return term;
+  const normal = path.posix.normalize(term);
+  return normal === "./" ? normal : normal.replace(/^\.\//, "");
+}
+
 function terms(text: string): string[] {
   return text
     .split(/[\s,;:()[\]{}"'`]+/)
-    .map((t) => t.replace(/[?!.]+$/, ""))
+    .map((t) => normalizePathTerm(t.replace(/[?!.]+$/, "")))
     .filter((t) => t.length >= 3 && SEEDING_TERM.test(t))
     .map((t) => t.toLowerCase());
 }
