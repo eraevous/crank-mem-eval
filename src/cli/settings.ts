@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { isObj, type CrankConfig } from "../hooks/lib/config.ts";
+import { AGENT_NAMES, type AgentName } from "../hooks/lib/agents.ts";
 
 // Additive wiring of hook entries into agent settings files, and its exact
 // inverse. Merge adds missing entries and refreshes only command forms
@@ -33,7 +34,7 @@ interface HookGroup {
 
 export type HooksMap = Record<string, HookGroup[]>;
 
-type Agent = "claude" | "codex";
+type Agent = AgentName;
 
 /**
  * The bun runner. `--env-file=/dev/null` stops bun loading the project's `.env`
@@ -75,7 +76,7 @@ export function hookCommand(runtime: CrankConfig["runtime"], script: string, age
 function commandForms(script: string): Set<string> {
   const forms = new Set<string>();
   for (const runtime of ["bun", "node"] as const) {
-    for (const agent of ["claude", "codex"] as const) {
+    for (const agent of AGENT_NAMES) {
       const { runner, p } = commandParts(runtime, script, agent);
       forms.add(`${runner} ${p}`).add(hookCommand(runtime, script, agent));
       if (runtime === "bun")

@@ -875,6 +875,10 @@ describe("flags (in-process)", () => {
     expect(commandSpec("search")!.unknownIsText).toBe(true);
   });
 
+  test("init's usage line lists --agents from the agent registry, unchanged (ADR 0016)", () => {
+    expect(commandSpec("init")!.usage).toContain("[--agents claude|codex|both]");
+  });
+
   test("job --help hides the job's test flags", () => {
     const help = commandHelp(COMMANDS.job);
     expect(help).toBe("Usage: crank-mem job <stem> (internal: the daemon runs it)");

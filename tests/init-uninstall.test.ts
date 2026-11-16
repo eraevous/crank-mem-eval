@@ -161,6 +161,14 @@ describe("init re-runs", () => {
     expect(fs.existsSync(path.join(root, ".claude"))).toBe(false);
   });
 
+  test("--agents outside the agent registry exits 1, names the registry, writes nothing (ADR 0016)", () => {
+    const { root, codexHome } = makeProject();
+    const r = cli(root, codexHome, "init", "--yes", "--agents", "cursor");
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("invalid --agents cursor (expected: claude | codex | both)");
+    expect(fs.existsSync(path.join(root, ".crank"))).toBe(false);
+  });
+
   test("--agents that contradicts --codex exits 1 before writing anything", () => {
     const { root, codexHome } = makeProject();
     const r = cli(root, codexHome, "init", "--yes", "--agents", "claude", "--codex", "merge");

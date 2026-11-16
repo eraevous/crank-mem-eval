@@ -1,4 +1,5 @@
 import { cliVersion } from "./version.ts";
+import { agentChoices } from "../hooks/lib/agents.ts";
 
 // Every command's flags and usage line. main.ts checks a command's flags
 // against its entry before loading it, so `--help` and a mistyped flag never
@@ -22,8 +23,7 @@ export interface CommandSpec {
 export const COMMANDS = {
   init: {
     summary: "Wire hooks into this project and run the first scan",
-    usage:
-      "Usage: crank-mem init [--yes] [--plan] [--agents claude|codex|both] [--git commit|ignore|exclude] [--adr <dir>] [--codex merge|skip] [--codex-trust write|skip] | --resume | --rollback",
+    usage: `Usage: crank-mem init [--yes] [--plan] [--agents ${agentChoices().join("|")}] [--git commit|ignore|exclude] [--adr <dir>] [--codex merge|skip] [--codex-trust write|skip] | --resume | --rollback`,
     value: ["git", "adr", "codex", "codex-trust", "agents"],
     bool: ["yes", "plan", "resume", "rollback"],
   },
