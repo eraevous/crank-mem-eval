@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { REPO_ROOT, makeCrankHome, makeProject, withEnv } from "./helpers.ts";
 import { cliVersion, REPO_ROOT as CLONE_ROOT } from "../src/cli/version.ts";
 import { newBackupDir } from "../src/cli/backups.ts";
-import { applyInstall, removeInstall, repairInstall } from "../src/cli/install.ts";
+import { applyInstall, removeInstall, repairInstall, resolveCodex } from "../src/cli/install.ts";
 import { crankHooks } from "../src/cli/settings.ts";
 import { defaultConfig, loadConfig, saveConfig } from "../src/hooks/lib/config.ts";
 import { AGENT_NAMES } from "../src/hooks/lib/agents.ts";
@@ -83,7 +83,7 @@ function runCase(c: Case): Run {
       return repairInstall({
         root,
         crankDir,
-        config: loadConfig(crankDir),
+        config: { ...loadConfig(crankDir), codex: resolveCodex(root, loadConfig(crankDir)) },
         backupDir: () => (d ??= newBackupDir(crankDir)),
       });
     };
@@ -115,7 +115,7 @@ test("agent hook maps and install → repair → remove match the pre-adapter go
   const got = current();
   if (process.env.CRANK_UPDATE_GOLDEN === "1")
     fs.writeFileSync(GOLDEN, JSON.stringify(got, null, 2) + "\n");
-  const want = JSON.parse(fs.readFileSync(GOLDEN, "utf-8")) as unknown;
+  const want = JSON.parse(fs.readFileSync(GOLDEN, "utf-8")) as Record<string, unknown>;
   expect(got).toEqual(want);
 });
 

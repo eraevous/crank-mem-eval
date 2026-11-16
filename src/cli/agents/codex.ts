@@ -1,15 +1,14 @@
 import * as path from "node:path";
+import type { CrankConfig } from "../../hooks/lib/config.ts";
 import {
-  addAllowRule,
-  crankHooks,
   ensureCodexFeatures,
-  hasCrankHooks,
-  isCrankHookCommand,
+  guardedCommand,
   mergeHooksIntoFile,
-  removeAllowRule,
   removeCodexFeatures,
   removeCrankHooksFromFile,
-} from "./settings.ts";
+  type HookHandler,
+  type HooksMap,
+} from "../settings.ts";
 import {
   CODEX_REVIEW_HINT,
   codexTrustStatus,
@@ -17,13 +16,12 @@ import {
   removeTrustEntries,
   userCodexConfigPath,
   writeTrustEntries,
-} from "./codex-trust.ts";
+} from "../codex-trust.ts";
 import {
   attemptRemoval,
   attemptRepair,
   backupWith,
   checkParseable,
-  claudeSettingsFiles,
   deleteNowEmpty,
   installPaths,
   isBlank,
@@ -31,85 +29,27 @@ import {
   pushLine,
   report,
   type InstallItem,
-  type Report,
-} from "./install-support.ts";
+} from "../install-support.ts";
+import type { AgentAdapter } from "../agents.ts";
 
-// The Claude Code and Codex wiring install items.
+// The Codex adapter (ADR 0016): its hook map, command paths, the wiring of
+// .codex/hooks.json and .codex/config.toml, and the trusted_hash step (ADR 0002).
 
-// Crank hooks left in the Claude settings file the git mode does not use run
-// every event twice.
-function removeDuplicateClaudeHooks(
-  r: Report,
-  root: string,
-  other: string,
-  backup: (file: string) => void,
-): void {
-  if (!hasCrankHooks(other)) return;
-  removeCrankHooksFromFile(other, isCrankHookCommand, backup);
-  r.lines.push(`  removed duplicate crank hooks from ${path.relative(root, other)}`);
+// Codex runs hooks with the project cwd.
+const commandPath = (script: string): string => `.crank/hooks/${script}`;
+
+// File history, Stop, SessionEnd and SubagentStart are Claude-only; Codex has no digests.
+function hooks(runtime: CrankConfig["runtime"]): HooksMap {
+  const entry = (script: string): HookHandler => ({
+    type: "command",
+    command: guardedCommand(runtime, commandPath(script)),
+    timeout: 10,
+  });
+  return {
+    SessionStart: [{ hooks: [entry("session-start.ts")] }],
+    PostToolUse: [{ matcher: "apply_patch", hooks: [entry("post-write.ts")] }],
+  };
 }
-
-/**
- * True when init recorded `--agents codex`: Claude Code is left unwired, and repair keeps it that
- * way. Stored as `"claude": "skip"` in config.json (aegis/safety-fixes; see ATTRIBUTION.md).
- */
-export function claudeSkipped(config: object): boolean {
-  return (config as Record<string, unknown>).claude === "skip";
-}
-
-export const claudeWiring: InstallItem = {
-  apply(ctx) {
-    const { root, config } = ctx;
-    const backup = backupWith(ctx);
-    const r = report();
-    if (claudeSkipped(config)) {
-      r.lines.push("  Claude Code: not wired (--agents codex)");
-      return r;
-    }
-    const { wired, other } = claudeSettingsFiles(root, config.git);
-    mergeHooksIntoFile(wired, crankHooks(config.runtime, "claude"), backup);
-    addAllowRule(wired, backup);
-    r.lines.push(`  Claude Code: hooks wired into ${path.relative(root, wired)}`);
-    removeDuplicateClaudeHooks(r, root, other, backup);
-    return r;
-  },
-  repair(ctx) {
-    const { root, config } = ctx;
-    const backup = backupWith(ctx);
-    const r = report();
-    if (claudeSkipped(config)) return r;
-    attemptRepair(r, "re-wire Claude Code hooks", () => {
-      const { wired, other } = claudeSettingsFiles(root, config.git);
-      removeDuplicateClaudeHooks(r, root, other, backup);
-      if (mergeHooksIntoFile(wired, crankHooks(config.runtime, "claude"), backup))
-        r.lines.push(`  re-wired Claude Code hooks in ${path.relative(root, wired)}`);
-      if (addAllowRule(wired, backup))
-        r.lines.push("  added the crank-mem rules to permissions.allow");
-    });
-    return r;
-  },
-  remove({ root, crankDir }) {
-    const { claudeShared, claudeLocal } = installPaths(root);
-    const r = report();
-    for (const f of [claudeShared, claudeLocal]) {
-      attemptRemoval(r, root, f, () => {
-        const rel = path.relative(root, f);
-        let wrote = false;
-        if (removeCrankHooksFromFile(f)) {
-          r.lines.push(`  removed crank hooks from ${rel}`);
-          wrote = true;
-        }
-        if (removeAllowRule(f)) {
-          r.lines.push(`  removed the crank-mem allow rules from ${rel}`);
-          wrote = true;
-        }
-        pushLine(r.lines, deleteNowEmpty(root, crankDir, f, isEmptyJson));
-        if (!wrote) checkParseable(r, root, f);
-      });
-    }
-    return r;
-  },
-};
 
 /**
  * Writes trust for crank's generated hook commands only. A command that is not
@@ -126,17 +66,38 @@ function writeCrankTrust(codexHooks: string, backup: (file: string) => void): st
   ];
 }
 
-export const codexWiring: InstallItem = {
+/** Trust keys come from hooks.json as it stands; returns whether any were removed. */
+function removeCrankTrust(codexHooks: string): boolean {
+  const keys = crankTrust(codexHooks).keys;
+  if (keys.length === 0) return false;
+  removeTrustEntries(userCodexConfigPath(), keys);
+  return true;
+}
+
+/** The trusted_hash step; only `codexWiring` below calls it (ADR 0016, trust lifecycle). */
+const codexTrust: NonNullable<AgentAdapter["trust"]> = {
+  status: (root) => {
+    const { codexHooks } = installPaths(root);
+    return codexTrustStatus(userCodexConfigPath(), root, codexHooks);
+  },
+  write: (root, backup) => writeCrankTrust(installPaths(root).codexHooks, backup),
+  remove: (root) =>
+    removeCrankTrust(installPaths(root).codexHooks)
+      ? [`  removed trusted_hash entries from ${userCodexConfigPath()}`]
+      : [],
+};
+
+const codexWiring: InstallItem = {
   apply(ctx) {
     const { root, config } = ctx;
     if (config.codex === "skip") return report(["  Codex: skipped"]);
     const backup = backupWith(ctx);
     const { codexHooks, codexConfig } = installPaths(root);
-    mergeHooksIntoFile(codexHooks, crankHooks(config.runtime, "codex"), backup);
+    mergeHooksIntoFile(codexHooks, codexAdapter.hooks(config.runtime), backup);
     ensureCodexFeatures(codexConfig, backup);
     const r = report(["  Codex: hooks wired into .codex/hooks.json"]);
     if (config.codex === "trust") {
-      const untrusted = writeCrankTrust(codexHooks, backup);
+      const untrusted = codexTrust.write(root, backup);
       r.lines.push(`  Codex trust: trusted_hash entries written to ${userCodexConfigPath()}`);
       r.lines.push(...untrusted);
     } else {
@@ -154,7 +115,7 @@ export const codexWiring: InstallItem = {
     const backup = backupWith(ctx);
     const { codexHooks, codexConfig } = installPaths(root);
     attemptRepair(r, "re-wire Codex hooks", () => {
-      if (mergeHooksIntoFile(codexHooks, crankHooks(config.runtime, "codex"), backup)) {
+      if (mergeHooksIntoFile(codexHooks, codexAdapter.hooks(config.runtime), backup)) {
         r.lines.push(`  re-wired Codex hooks in ${path.relative(root, codexHooks)}`);
         if (config.codex === "review") r.lines.push(...CODEX_REVIEW_HINT);
       }
@@ -163,9 +124,9 @@ export const codexWiring: InstallItem = {
           `  added the crank-mem [features] snippet to ${path.relative(root, codexConfig)}`,
         );
       if (config.codex === "trust") {
-        const s = codexTrustStatus(userCodexConfigPath(), root, codexHooks);
+        const s = codexTrust.status(root);
         if (s.missing + s.stale + s.orphans + s.untrusted > 0) {
-          const untrusted = writeCrankTrust(codexHooks, backup);
+          const untrusted = codexTrust.write(root, backup);
           r.lines.push("  recomputed Codex trusted_hash entries");
           r.lines.push(...untrusted);
         }
@@ -180,11 +141,7 @@ export const codexWiring: InstallItem = {
     // Both spellings go — older releases keyed on the raw PascalCase event.
     if (config.codex === "trust") {
       attemptRemoval(r, root, userCodexConfigPath(), () => {
-        const keys = crankTrust(codexHooks).keys;
-        if (keys.length > 0) {
-          removeTrustEntries(userCodexConfigPath(), keys);
-          r.lines.push(`  removed trusted_hash entries from ${userCodexConfigPath()}`);
-        }
+        r.lines.push(...codexTrust.remove(root));
       });
     }
     attemptRemoval(r, root, codexHooks, () => {
@@ -199,4 +156,14 @@ export const codexWiring: InstallItem = {
     });
     return r;
   },
+};
+
+export const codexAdapter: AgentAdapter = {
+  name: "codex",
+  label: "Codex",
+  hooks,
+  commandPath,
+  enabled: (config) => config.codex !== "skip",
+  wiring: codexWiring,
+  trust: codexTrust,
 };

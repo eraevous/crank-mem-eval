@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { isObj, type CrankConfig } from "../hooks/lib/config.ts";
-import { AGENT_NAMES, type AgentName } from "../hooks/lib/agents.ts";
+import { commandForms } from "./agents.ts";
 
 // Additive wiring of hook entries into agent settings files, and its exact
 // inverse. Merge adds missing entries and refreshes only command forms
@@ -21,20 +21,23 @@ export function isLegacyHookCommand(command: string | undefined): boolean {
   return !!command && command.includes("crank/hooks/") && !command.includes(CRANK_HOOK_MARKER);
 }
 
-interface HookHandler {
+export interface HookHandler {
   type: "command";
   command: string;
   timeout?: number;
 }
 
-interface HookGroup {
+export interface HookGroup {
   matcher?: string;
   hooks: HookHandler[];
 }
 
 export type HooksMap = Record<string, HookGroup[]>;
 
-type Agent = AgentName;
+// The per-agent parts (hook map, command path, wiring, trust) live in the agent
+// adapters under src/cli/agents/ (ADR 0016); these re-exports keep the names
+// callers and tests already import from here.
+export { crankHooks, hookCommand, isGeneratedHookCommand, SUBAGENT_MATCHER } from "./agents.ts";
 
 /**
  * The bun runner. `--env-file=/dev/null` stops bun loading the project's `.env`
@@ -52,43 +55,28 @@ function runnerFor(runtime: CrankConfig["runtime"]): string {
   return runtime === "bun" ? BUN_RUNNER : "node --disable-warning=ExperimentalWarning";
 }
 
-function commandParts(
-  runtime: CrankConfig["runtime"],
-  script: string,
-  agent: Agent,
-): { runner: string; p: string } {
-  const runner = runnerFor(runtime);
-  // Claude expands $CLAUDE_PROJECT_DIR; Codex runs hooks with the project cwd.
-  const p =
-    agent === "claude" ? `"$CLAUDE_PROJECT_DIR"/.crank/hooks/${script}` : `.crank/hooks/${script}`;
-  return { runner, p };
-}
-
-export function hookCommand(runtime: CrankConfig["runtime"], script: string, agent: Agent): string {
-  const { runner, p } = commandParts(runtime, script, agent);
+/** The command crank-mem emits for the hook script at `p`, as the agent spells the path. */
+export function guardedCommand(runtime: CrankConfig["runtime"], p: string): string {
   // A committed settings file outlives .crank/ in clean checkouts and
   // worktrees; without the script the hook exits 0 instead of failing.
-  return `[ ! -f ${p} ] || ${runner} ${p}`;
+  return `[ ! -f ${p} ] || ${runnerFor(runtime)} ${p}`;
 }
 
-/** Every command form crank-mem has emitted for a script: the unguarded form
- * older releases wrote and the current guarded one, for both runtimes and both agents. */
-function commandForms(script: string): Set<string> {
-  const forms = new Set<string>();
+/** Every command form crank-mem has emitted for the script at `p`: the unguarded form
+ * older releases wrote and the current guarded one, for both runtimes. */
+export function commandFormsAt(p: string): string[] {
+  const forms: string[] = [];
   for (const runtime of ["bun", "node"] as const) {
-    for (const agent of AGENT_NAMES) {
-      const { runner, p } = commandParts(runtime, script, agent);
-      forms.add(`${runner} ${p}`).add(hookCommand(runtime, script, agent));
-      if (runtime === "bun")
-        for (const legacy of LEGACY_RUNNERS)
-          forms.add(`${legacy} ${p}`).add(`[ ! -f ${p} ] || ${legacy} ${p}`);
-    }
+    forms.push(`${runnerFor(runtime)} ${p}`, guardedCommand(runtime, p));
+    if (runtime === "bun")
+      for (const legacy of LEGACY_RUNNERS)
+        forms.push(`${legacy} ${p}`, `[ ! -f ${p} ] || ${legacy} ${p}`);
   }
   return forms;
 }
 
-/** Every hook script crank-mem wires, for either agent. */
-const HOOK_SCRIPTS = [
+/** Every hook script crank-mem wires, for any agent. */
+export const HOOK_SCRIPTS = [
   "session-start.ts",
   "post-write.ts",
   "post-read.ts",
@@ -96,49 +84,6 @@ const HOOK_SCRIPTS = [
   "session-end.ts",
   "subagent-start.ts",
 ];
-
-let generatedForms: Set<string> | undefined;
-
-/**
- * True only for a command exactly in a form crank-mem emits or has emitted, for
- * one of its own scripts. A command that merely contains `.crank/hooks/` (one a
- * repository edited to append shell, say) is not, so it never gets Codex trust
- * written for it and Codex asks the user to review it.
- */
-export function isGeneratedHookCommand(command: string | undefined): boolean {
-  if (!command) return false;
-  generatedForms ??= new Set(HOOK_SCRIPTS.flatMap((script) => [...commandForms(script)]));
-  return generatedForms.has(command);
-}
-
-/**
- * The subagent types that get the SubagentStart excerpt. The anchored list
- * leaves out custom and plugin agents; ADR 0007 records the census behind it.
- */
-export const SUBAGENT_MATCHER = "^(general-purpose|Explore|Plan|workflow-subagent)$";
-
-/** The hook entries crank-mem wires, per agent. */
-export function crankHooks(runtime: CrankConfig["runtime"], agent: Agent): HooksMap {
-  const matcher = agent === "claude" ? "Write|Edit|MultiEdit" : "apply_patch";
-  const entry = (script: string): HookHandler => ({
-    type: "command",
-    command: hookCommand(runtime, script, agent),
-    timeout: 10,
-  });
-  const map: HooksMap = {
-    SessionStart: [{ hooks: [entry("session-start.ts")] }],
-    PostToolUse: [{ matcher, hooks: [entry("post-write.ts")] }],
-  };
-  // File history, Stop, SessionEnd and SubagentStart are Claude-only; Codex has no digests.
-  if (agent === "claude") {
-    // After the write group, so PostToolUse[0] stays the write matcher.
-    map.PostToolUse!.push({ matcher: "Read|Bash", hooks: [entry("post-read.ts")] });
-    map.Stop = [{ hooks: [entry("stop.ts")] }];
-    map.SessionEnd = [{ hooks: [entry("session-end.ts")] }];
-    map.SubagentStart = [{ matcher: SUBAGENT_MATCHER, hooks: [entry("subagent-start.ts")] }];
-  }
-  return map;
-}
 
 function readJson(file: string): Record<string, unknown> {
   return JSON.parse(fs.readFileSync(file, "utf-8"));

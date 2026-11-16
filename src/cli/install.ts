@@ -16,7 +16,7 @@ import {
   type InstallItem,
   type Report,
 } from "./install-support.ts";
-import { claudeWiring, codexWiring } from "./install-agents.ts";
+import { AGENTS } from "./agents.ts";
 import { crankGitignore, gitIgnoreState } from "./install-gitignore.ts";
 
 // The ordered list of everything crank-mem installs into a project. Each
@@ -125,8 +125,8 @@ const registry: InstallItem = {
 
 const ITEMS: InstallItem[] = [
   vendoredHooks,
-  claudeWiring,
-  codexWiring,
+  // Each agent adapter's wiring, in registry order (ADR 0016).
+  ...AGENTS.map((agent) => agent.wiring),
   crankGitignore,
   gitIgnoreState,
   cerebrum,

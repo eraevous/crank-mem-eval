@@ -12,7 +12,7 @@ import { gitExcludeFile, installPaths, claudeSettingsFiles } from "./install-sup
 import { clearJournal, hasJournal, readJournal, writeJournal } from "./install-journal.ts";
 import { printChecks, projectChecks } from "./doctor.ts";
 import { repairInstall } from "./install.ts";
-import { claudeSkipped } from "./install-agents.ts";
+import { claudeSkipped } from "./agents/claude.ts";
 import { userCodexConfigPath } from "./codex-trust.ts";
 import { crankHome } from "../hooks/lib/user-state.ts";
 import { loadConfig } from "../hooks/lib/config.ts";
