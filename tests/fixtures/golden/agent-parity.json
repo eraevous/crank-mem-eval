@@ -1,0 +1,363 @@
+{
+  "hooks": {
+    "claude/bun": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/session-start.ts ] || bun --env-file=/dev/null \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/session-start.ts",
+              "timeout": 10
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "matcher": "Write|Edit|MultiEdit",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/post-write.ts ] || bun --env-file=/dev/null \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/post-write.ts",
+              "timeout": 10
+            }
+          ]
+        },
+        {
+          "matcher": "Read|Bash",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/post-read.ts ] || bun --env-file=/dev/null \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/post-read.ts",
+              "timeout": 10
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/stop.ts ] || bun --env-file=/dev/null \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/stop.ts",
+              "timeout": 10
+            }
+          ]
+        }
+      ],
+      "SessionEnd": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/session-end.ts ] || bun --env-file=/dev/null \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/session-end.ts",
+              "timeout": 10
+            }
+          ]
+        }
+      ],
+      "SubagentStart": [
+        {
+          "matcher": "^(general-purpose|Explore|Plan|workflow-subagent)$",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/subagent-start.ts ] || bun --env-file=/dev/null \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/subagent-start.ts",
+              "timeout": 10
+            }
+          ]
+        }
+      ]
+    },
+    "claude/node": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/session-start.ts ] || node --disable-warning=ExperimentalWarning \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/session-start.ts",
+              "timeout": 10
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "matcher": "Write|Edit|MultiEdit",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/post-write.ts ] || node --disable-warning=ExperimentalWarning \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/post-write.ts",
+              "timeout": 10
+            }
+          ]
+        },
+        {
+          "matcher": "Read|Bash",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/post-read.ts ] || node --disable-warning=ExperimentalWarning \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/post-read.ts",
+              "timeout": 10
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/stop.ts ] || node --disable-warning=ExperimentalWarning \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/stop.ts",
+              "timeout": 10
+            }
+          ]
+        }
+      ],
+      "SessionEnd": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/session-end.ts ] || node --disable-warning=ExperimentalWarning \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/session-end.ts",
+              "timeout": 10
+            }
+          ]
+        }
+      ],
+      "SubagentStart": [
+        {
+          "matcher": "^(general-purpose|Explore|Plan|workflow-subagent)$",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/subagent-start.ts ] || node --disable-warning=ExperimentalWarning \"$CLAUDE_PROJECT_DIR\"/.crank/hooks/subagent-start.ts",
+              "timeout": 10
+            }
+          ]
+        }
+      ]
+    },
+    "codex/bun": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "[ ! -f .crank/hooks/session-start.ts ] || bun --env-file=/dev/null .crank/hooks/session-start.ts",
+              "timeout": 10
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "matcher": "apply_patch",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "[ ! -f .crank/hooks/post-write.ts ] || bun --env-file=/dev/null .crank/hooks/post-write.ts",
+              "timeout": 10
+            }
+          ]
+        }
+      ]
+    },
+    "codex/node": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "[ ! -f .crank/hooks/session-start.ts ] || node --disable-warning=ExperimentalWarning .crank/hooks/session-start.ts",
+              "timeout": 10
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "matcher": "apply_patch",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "[ ! -f .crank/hooks/post-write.ts ] || node --disable-warning=ExperimentalWarning .crank/hooks/post-write.ts",
+              "timeout": 10
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "runs": {
+    "claude+codex:skip": {
+      "initLines": [
+        "  Claude Code: hooks wired into .claude/settings.local.json",
+        "  Codex: skipped"
+      ],
+      "files": {
+        ".claude/settings.local.json": "{\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/session-start.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/session-start.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ],\n    \"PostToolUse\": [\n      {\n        \"matcher\": \"Write|Edit|MultiEdit\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/post-write.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/post-write.ts\",\n            \"timeout\": 10\n          }\n        ]\n      },\n      {\n        \"matcher\": \"Read|Bash\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/post-read.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/post-read.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ],\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/stop.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/stop.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ],\n    \"SessionEnd\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/session-end.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/session-end.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ],\n    \"SubagentStart\": [\n      {\n        \"matcher\": \"^(general-purpose|Explore|Plan|workflow-subagent)$\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/subagent-start.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/subagent-start.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ]\n  },\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(crank-mem search *)\",\n      \"Bash(crank-mem timeline *)\",\n      \"Bash(crank-mem get *)\",\n      \"Bash(crank-mem outline *)\",\n      \"Bash(crank-mem unfold *)\"\n    ]\n  }\n}\n",
+        ".codex/hooks.json": null,
+        ".codex/config.toml": null,
+        "<codex>/config.toml": "model = \"gpt-5.6\"\n"
+      },
+      "repairAfterDamage": [
+        "  re-wired Claude Code hooks in .claude/settings.local.json",
+        "  added the crank-mem rules to permissions.allow"
+      ],
+      "repairAgain": [],
+      "removeLines": [
+        "  deleted now-empty .gitignore",
+        "  removed crank hooks from .claude/settings.local.json",
+        "  removed the crank-mem allow rules from .claude/settings.local.json",
+        "  deleted now-empty .claude/settings.local.json"
+      ],
+      "filesAfterRemove": {
+        ".claude/settings.local.json": null,
+        ".codex/hooks.json": null,
+        ".codex/config.toml": null,
+        "<codex>/config.toml": "model = \"gpt-5.6\"\n"
+      }
+    },
+    "claude+codex:review": {
+      "initLines": [
+        "  Claude Code: hooks wired into .claude/settings.local.json",
+        "  Codex: hooks wired into .codex/hooks.json",
+        "  Codex trust: open codex once in this project and accept the hooks review",
+        "  (or headless: codex --dangerously-bypass-hook-trust)"
+      ],
+      "files": {
+        ".claude/settings.local.json": "{\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/session-start.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/session-start.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ],\n    \"PostToolUse\": [\n      {\n        \"matcher\": \"Write|Edit|MultiEdit\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/post-write.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/post-write.ts\",\n            \"timeout\": 10\n          }\n        ]\n      },\n      {\n        \"matcher\": \"Read|Bash\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/post-read.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/post-read.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ],\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/stop.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/stop.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ],\n    \"SessionEnd\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/session-end.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/session-end.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ],\n    \"SubagentStart\": [\n      {\n        \"matcher\": \"^(general-purpose|Explore|Plan|workflow-subagent)$\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/subagent-start.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/subagent-start.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ]\n  },\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(crank-mem search *)\",\n      \"Bash(crank-mem timeline *)\",\n      \"Bash(crank-mem get *)\",\n      \"Bash(crank-mem outline *)\",\n      \"Bash(crank-mem unfold *)\"\n    ]\n  }\n}\n",
+        ".codex/hooks.json": "{\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f .crank/hooks/session-start.ts ] || bun --env-file=/dev/null .crank/hooks/session-start.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ],\n    \"PostToolUse\": [\n      {\n        \"matcher\": \"apply_patch\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f .crank/hooks/post-write.ts ] || bun --env-file=/dev/null .crank/hooks/post-write.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ]\n  }\n}\n",
+        ".codex/config.toml": "\n# crank-mem\n[features]\nhooks = true\n",
+        "<codex>/config.toml": "model = \"gpt-5.6\"\n"
+      },
+      "repairAfterDamage": [
+        "  re-wired Claude Code hooks in .claude/settings.local.json",
+        "  added the crank-mem rules to permissions.allow",
+        "  re-wired Codex hooks in .codex/hooks.json",
+        "  Codex trust: open codex once in this project and accept the hooks review",
+        "  (or headless: codex --dangerously-bypass-hook-trust)",
+        "  added the crank-mem [features] snippet to .codex/config.toml"
+      ],
+      "repairAgain": [],
+      "removeLines": [
+        "  deleted now-empty .gitignore",
+        "  removed crank hooks from .codex/hooks.json",
+        "  deleted now-empty .codex/hooks.json",
+        "  deleted now-empty .codex/config.toml",
+        "  removed crank hooks from .claude/settings.local.json",
+        "  removed the crank-mem allow rules from .claude/settings.local.json",
+        "  deleted now-empty .claude/settings.local.json"
+      ],
+      "filesAfterRemove": {
+        ".claude/settings.local.json": null,
+        ".codex/hooks.json": null,
+        ".codex/config.toml": null,
+        "<codex>/config.toml": "model = \"gpt-5.6\"\n"
+      }
+    },
+    "claude+codex:trust": {
+      "initLines": [
+        "  Claude Code: hooks wired into .claude/settings.local.json",
+        "  Codex: hooks wired into .codex/hooks.json",
+        "  Codex trust: trusted_hash entries written to <codex>/config.toml"
+      ],
+      "files": {
+        ".claude/settings.local.json": "{\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/session-start.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/session-start.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ],\n    \"PostToolUse\": [\n      {\n        \"matcher\": \"Write|Edit|MultiEdit\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/post-write.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/post-write.ts\",\n            \"timeout\": 10\n          }\n        ]\n      },\n      {\n        \"matcher\": \"Read|Bash\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/post-read.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/post-read.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ],\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/stop.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/stop.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ],\n    \"SessionEnd\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/session-end.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/session-end.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ],\n    \"SubagentStart\": [\n      {\n        \"matcher\": \"^(general-purpose|Explore|Plan|workflow-subagent)$\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/subagent-start.ts ] || bun --env-file=/dev/null \\\"$CLAUDE_PROJECT_DIR\\\"/.crank/hooks/subagent-start.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ]\n  },\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(crank-mem search *)\",\n      \"Bash(crank-mem timeline *)\",\n      \"Bash(crank-mem get *)\",\n      \"Bash(crank-mem outline *)\",\n      \"Bash(crank-mem unfold *)\"\n    ]\n  }\n}\n",
+        ".codex/hooks.json": "{\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f .crank/hooks/session-start.ts ] || bun --env-file=/dev/null .crank/hooks/session-start.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ],\n    \"PostToolUse\": [\n      {\n        \"matcher\": \"apply_patch\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f .crank/hooks/post-write.ts ] || bun --env-file=/dev/null .crank/hooks/post-write.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ]\n  }\n}\n",
+        ".codex/config.toml": "\n# crank-mem\n[features]\nhooks = true\n",
+        "<codex>/config.toml": "model = \"gpt-5.6\"\n[hooks.state.\"<root>/.codex/hooks.json:session_start:0:0\"]\ntrusted_hash = \"sha256:b13a3f5be775f59ccc718c49d871b7a2243300a344a6e203abaf42807230c6f4\"\n[hooks.state.\"<root>/.codex/hooks.json:post_tool_use:0:0\"]\ntrusted_hash = \"sha256:27d32ff88cdad1e92bb09a6466474379f036ef98e23d64ad4966fd4e91c413b0\"\n"
+      },
+      "repairAfterDamage": [
+        "  re-wired Claude Code hooks in .claude/settings.local.json",
+        "  added the crank-mem rules to permissions.allow",
+        "  re-wired Codex hooks in .codex/hooks.json",
+        "  added the crank-mem [features] snippet to .codex/config.toml",
+        "  recomputed Codex trusted_hash entries"
+      ],
+      "repairAgain": [],
+      "removeLines": [
+        "  deleted now-empty .gitignore",
+        "  removed trusted_hash entries from <codex>/config.toml",
+        "  removed crank hooks from .codex/hooks.json",
+        "  deleted now-empty .codex/hooks.json",
+        "  deleted now-empty .codex/config.toml",
+        "  removed crank hooks from .claude/settings.local.json",
+        "  removed the crank-mem allow rules from .claude/settings.local.json",
+        "  deleted now-empty .claude/settings.local.json"
+      ],
+      "filesAfterRemove": {
+        ".claude/settings.local.json": null,
+        ".codex/hooks.json": null,
+        ".codex/config.toml": null,
+        "<codex>/config.toml": "model = \"gpt-5.6\"\n"
+      }
+    },
+    "codex-only:review": {
+      "initLines": [
+        "  Claude Code: not wired (--agents codex)",
+        "  Codex: hooks wired into .codex/hooks.json",
+        "  Codex trust: open codex once in this project and accept the hooks review",
+        "  (or headless: codex --dangerously-bypass-hook-trust)"
+      ],
+      "files": {
+        ".claude/settings.local.json": null,
+        ".codex/hooks.json": "{\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f .crank/hooks/session-start.ts ] || bun --env-file=/dev/null .crank/hooks/session-start.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ],\n    \"PostToolUse\": [\n      {\n        \"matcher\": \"apply_patch\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f .crank/hooks/post-write.ts ] || bun --env-file=/dev/null .crank/hooks/post-write.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ]\n  }\n}\n",
+        ".codex/config.toml": "\n# crank-mem\n[features]\nhooks = true\n",
+        "<codex>/config.toml": "model = \"gpt-5.6\"\n"
+      },
+      "repairAfterDamage": [
+        "  re-wired Codex hooks in .codex/hooks.json",
+        "  Codex trust: open codex once in this project and accept the hooks review",
+        "  (or headless: codex --dangerously-bypass-hook-trust)",
+        "  added the crank-mem [features] snippet to .codex/config.toml"
+      ],
+      "repairAgain": [],
+      "removeLines": [
+        "  deleted now-empty .gitignore",
+        "  removed crank hooks from .codex/hooks.json",
+        "  deleted now-empty .codex/hooks.json",
+        "  deleted now-empty .codex/config.toml"
+      ],
+      "filesAfterRemove": {
+        ".claude/settings.local.json": null,
+        ".codex/hooks.json": null,
+        ".codex/config.toml": null,
+        "<codex>/config.toml": "model = \"gpt-5.6\"\n"
+      }
+    },
+    "codex-only:trust": {
+      "initLines": [
+        "  Claude Code: not wired (--agents codex)",
+        "  Codex: hooks wired into .codex/hooks.json",
+        "  Codex trust: trusted_hash entries written to <codex>/config.toml"
+      ],
+      "files": {
+        ".claude/settings.local.json": null,
+        ".codex/hooks.json": "{\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f .crank/hooks/session-start.ts ] || bun --env-file=/dev/null .crank/hooks/session-start.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ],\n    \"PostToolUse\": [\n      {\n        \"matcher\": \"apply_patch\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f .crank/hooks/post-write.ts ] || bun --env-file=/dev/null .crank/hooks/post-write.ts\",\n            \"timeout\": 10\n          }\n        ]\n      }\n    ]\n  }\n}\n",
+        ".codex/config.toml": "\n# crank-mem\n[features]\nhooks = true\n",
+        "<codex>/config.toml": "model = \"gpt-5.6\"\n[hooks.state.\"<root>/.codex/hooks.json:session_start:0:0\"]\ntrusted_hash = \"sha256:b13a3f5be775f59ccc718c49d871b7a2243300a344a6e203abaf42807230c6f4\"\n[hooks.state.\"<root>/.codex/hooks.json:post_tool_use:0:0\"]\ntrusted_hash = \"sha256:27d32ff88cdad1e92bb09a6466474379f036ef98e23d64ad4966fd4e91c413b0\"\n"
+      },
+      "repairAfterDamage": [
+        "  re-wired Codex hooks in .codex/hooks.json",
+        "  added the crank-mem [features] snippet to .codex/config.toml",
+        "  recomputed Codex trusted_hash entries"
+      ],
+      "repairAgain": [],
+      "removeLines": [
+        "  deleted now-empty .gitignore",
+        "  removed trusted_hash entries from <codex>/config.toml",
+        "  removed crank hooks from .codex/hooks.json",
+        "  deleted now-empty .codex/hooks.json",
+        "  deleted now-empty .codex/config.toml"
+      ],
+      "filesAfterRemove": {
+        ".claude/settings.local.json": null,
+        ".codex/hooks.json": null,
+        ".codex/config.toml": null,
+        "<codex>/config.toml": "model = \"gpt-5.6\"\n"
+      }
+    }
+  }
+}
