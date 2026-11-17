@@ -34,7 +34,11 @@ export interface AgentAdapter {
     write(root: string, backup: (file: string) => void): string[];
     remove(root: string): string[];
   };
-  /** Distill this agent's session transcript for a digest. Claude only; Codex sessions are not digested. */
+  /**
+   * Distill this agent's session transcript for a digest. Only Claude supplies
+   * a reader; an entry naming any other agent keeps the legacy fallback to
+   * Claude's (see transcriptReader).
+   */
   readTranscript?(file: string, after: Position | null, maxChars: number): Distilled;
 }
 
