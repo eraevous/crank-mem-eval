@@ -67,6 +67,30 @@ function commandForms(script: string): Set<string> {
   return forms;
 }
 
+/** Every hook script crank-mem wires, for either agent. */
+const HOOK_SCRIPTS = [
+  "session-start.ts",
+  "post-write.ts",
+  "post-read.ts",
+  "stop.ts",
+  "session-end.ts",
+  "subagent-start.ts",
+];
+
+let generatedForms: Set<string> | undefined;
+
+/**
+ * True only for a command exactly in a form crank-mem emits or has emitted, for
+ * one of its own scripts. A command that merely contains `.crank/hooks/` (one a
+ * repository edited to append shell, say) is not, so it never gets Codex trust
+ * written for it and Codex asks the user to review it.
+ */
+export function isGeneratedHookCommand(command: string | undefined): boolean {
+  if (!command) return false;
+  generatedForms ??= new Set(HOOK_SCRIPTS.flatMap((script) => [...commandForms(script)]));
+  return generatedForms.has(command);
+}
+
 /**
  * The subagent types that get the SubagentStart excerpt. The anchored list
  * leaves out custom and plugin agents; ADR 0007 records the census behind it.

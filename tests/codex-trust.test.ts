@@ -92,7 +92,12 @@ describe("crankTrust", () => {
     expect(t.keys).toEqual([...t.entries.map((e) => e.key), ...t.staleKeys]);
   });
   test("missing file yields no entries", () => {
-    expect(crankTrust("/nonexistent/hooks.json")).toEqual({ entries: [], staleKeys: [], keys: [] });
+    expect(crankTrust("/nonexistent/hooks.json")).toEqual({
+      entries: [],
+      staleKeys: [],
+      untrustedKeys: [],
+      keys: [],
+    });
   });
 });
 

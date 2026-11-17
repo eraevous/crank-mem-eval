@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { isObj, readJsonObject } from "../hooks/lib/config.ts";
-import { isCrankHookCommand, type HooksMap } from "./settings.ts";
+import { isCrankHookCommand, isGeneratedHookCommand, type HooksMap } from "./settings.ts";
 
 // Opt-in Codex per-hook trust: compute trusted_hash entries the way codex-rs
 // does (ADR 0002, verified against rust-v0.144.6 source, identical to 0.144.5:
@@ -131,9 +131,16 @@ export function staleTrustKeys(
 }
 
 export interface CrankTrust {
+  /** Entries for the crank handlers whose command is exactly a form crank-mem generates. */
   entries: TrustEntry[];
   staleKeys: string[];
-  /** Every key crank owns in config.toml: the entries' keys, then the stale keys. */
+  /**
+   * Keys of crank handlers whose command is not a generated form (a repository
+   * edited it, say). They get no trust: any entry under them is removed, so
+   * Codex asks the user to review that hook.
+   */
+  untrustedKeys: string[];
+  /** Every key crank owns in config.toml: the entries' keys, the stale keys, then the untrusted keys. */
   keys: string[];
 }
 
@@ -143,9 +150,18 @@ export function crankTrust(
   matches: (command: string | undefined) => boolean = isCrankHookCommand,
 ): CrankTrust {
   const hooks = readHooksMap(hooksJsonPath);
-  const entries = hooks ? trustEntries(hooksJsonPath, hooks, matches) : [];
-  const staleKeys = hooks ? staleTrustKeys(hooksJsonPath, hooks, matches) : [];
-  return { entries, staleKeys, keys: [...entries.map((e) => e.key), ...staleKeys] };
+  if (!hooks) return { entries: [], staleKeys: [], untrustedKeys: [], keys: [] };
+  const generated = (c: string | undefined) => matches(c) && isGeneratedHookCommand(c);
+  const edited = (c: string | undefined) => matches(c) && !isGeneratedHookCommand(c);
+  const entries = trustEntries(hooksJsonPath, hooks, generated);
+  const staleKeys = staleTrustKeys(hooksJsonPath, hooks, matches);
+  const untrustedKeys = trustEntries(hooksJsonPath, hooks, edited).map((e) => e.key);
+  return {
+    entries,
+    staleKeys,
+    untrustedKeys,
+    keys: [...entries.map((e) => e.key), ...staleKeys, ...untrustedKeys],
+  };
 }
 
 /** What to do when crank's Codex hooks changed and no trust entries were written for them. */
@@ -239,6 +255,8 @@ export interface TrustStatus {
   missing: number;
   /** Stale PascalCase keys from older releases that still have a table in config.toml. */
   orphans: number;
+  /** Crank handlers whose command is not a generated form but still have a trust table. */
+  untrusted: number;
 }
 
 /** Compare the crank handlers in a hooks.json with the trust config.toml holds for them. */
@@ -257,6 +275,7 @@ export function codexTrustStatus(
     stale: 0,
     missing: 0,
     orphans: 0,
+    untrusted: 0,
   };
   const trust = crankTrust(hooksJsonPath);
   for (const e of trust.entries) {
@@ -267,5 +286,7 @@ export function codexTrustStatus(
   }
   for (const key of trust.staleKeys)
     if (tables.has(`hooks.state.${JSON.stringify(key)}`)) status.orphans++;
+  for (const key of trust.untrustedKeys)
+    if (tables.has(`hooks.state.${JSON.stringify(key)}`)) status.untrusted++;
   return status;
 }
