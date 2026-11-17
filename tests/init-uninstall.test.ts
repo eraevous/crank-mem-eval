@@ -161,6 +161,14 @@ describe("init re-runs", () => {
     expect(fs.existsSync(path.join(root, ".claude"))).toBe(false);
   });
 
+  test("--agents outside the agent registry exits 1, names the registry, writes nothing (ADR 0016)", () => {
+    const { root, codexHome } = makeProject();
+    const r = cli(root, codexHome, "init", "--yes", "--agents", "cursor");
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("invalid --agents cursor (expected: claude | codex | both)");
+    expect(fs.existsSync(path.join(root, ".crank"))).toBe(false);
+  });
+
   test("--agents that contradicts --codex exits 1 before writing anything", () => {
     const { root, codexHome } = makeProject();
     const r = cli(root, codexHome, "init", "--yes", "--agents", "claude", "--codex", "merge");
@@ -606,6 +614,41 @@ describe("init → uninstall round-trip", () => {
     );
     cli(root, codexHome, "uninstall", "--yes", "--keep-crank");
     expect(fs.readFileSync(codexConfig, "utf-8")).toBe('model = "gpt-5.6"\n' + codexOwn);
+  });
+
+  // ADR 0016 trust lifecycle: a trust step that cannot write is reported, never
+  // thrown. Checked by hand to print the same lines on main before the adapters
+  // (Kate review round 2 asked for a pin of trust failure handling).
+  test("codex-trust write: an unwritable Codex config is reported by init, upgrade and uninstall", () => {
+    const { root, codexHome } = makeProject();
+    const codexConfig = path.join(codexHome, "config.toml");
+    fs.rmSync(codexConfig);
+    fs.mkdirSync(codexConfig); // a directory: unreadable as a file, for root too
+
+    const init = cli(
+      root,
+      codexHome,
+      "init",
+      "--yes",
+      "--codex",
+      "merge",
+      "--codex-trust",
+      "write",
+    );
+    expect(init.status).toBe(1);
+    expect(init.stderr + init.stdout).toContain("init failed partway");
+
+    const upgrade = cli(root, codexHome, "upgrade");
+    expect(upgrade.status).toBe(1);
+    expect(upgrade.stderr + upgrade.stdout).toContain("could not re-wire Codex hooks (EISDIR");
+
+    const uninstall = cli(root, codexHome, "uninstall", "--yes", "--keep-crank");
+    expect(uninstall.status).toBe(1);
+    const out = uninstall.stderr + uninstall.stdout;
+    expect(out).toContain("removed crank hooks from .codex/hooks.json");
+    expect(out).toContain(`could not remove crank-mem's entries from ${codexConfig} (EISDIR`);
+    expect(out).toContain("uninstalled.");
+    expect(fs.statSync(codexConfig).isDirectory()).toBe(true);
   });
 
   test("codex-trust write: upgrade leaves a repo-edited crank hook command untrusted", () => {

@@ -13,7 +13,7 @@ import {
 import { CRANK_DIR, loadConfig } from "./lib/config.ts";
 import { debugEvent, enableDebug, safePath } from "./lib/debug.ts";
 import { formatLine, memoryPath, openMemory, type MemoryReader } from "./lib/memory.ts";
-import { shellReadPaths } from "./lib/shell-reads.ts";
+import { hookEvent } from "./lib/payload-adapters.ts";
 import { transcriptStem } from "./lib/spool.ts";
 import { SEEN_DIR, crankHome, ensureCrankHome, writeJsonAtomic } from "./lib/user-state.ts";
 import { hookActor, recordUsage } from "./lib/usage.ts";
@@ -25,15 +25,6 @@ import { hookActor, recordUsage } from "./lib/usage.ts";
 const HISTORY_LINES = 5;
 const MAX_BYTES = 1536;
 const SEP = "\n\n";
-
-function readPaths(payload: HookPayload): string[] {
-  const input = payload.tool_input ?? {};
-  if (payload.tool_name === "Read")
-    return typeof input.file_path === "string" ? [input.file_path] : [];
-  if (payload.tool_name === "Bash")
-    return typeof input.command === "string" ? shellReadPaths(input.command) : [];
-  return [];
-}
 
 function readSeen(file: string): string[] {
   try {
@@ -103,7 +94,7 @@ async function main(): Promise<void> {
   const payload = parsePayload(await readStdin());
   if (!payload) return;
 
-  const paths = readPaths(payload);
+  const paths = hookEvent(payload).reads;
   if (paths.length === 0) return;
 
   const cwd = typeof payload.cwd === "string" ? payload.cwd : process.cwd();

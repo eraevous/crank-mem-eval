@@ -17,7 +17,7 @@ import {
   type CliRun,
 } from "./helpers.ts";
 import { claudeSessionStart } from "./fixtures/payloads.ts";
-import { crankHooks } from "../src/cli/settings.ts";
+import { crankHooks } from "../src/cli/agents.ts";
 import { crankTrust } from "../src/cli/codex-trust.ts";
 import { memoryPath, openMemory } from "../src/hooks/lib/memory.ts";
 import { unknownFlag } from "../src/cli/args.ts";
@@ -873,6 +873,10 @@ describe("flags (in-process)", () => {
     ]);
     expect(commandSpec("toString")).toBeUndefined();
     expect(commandSpec("search")!.unknownIsText).toBe(true);
+  });
+
+  test("init's usage line lists --agents from the agent registry, unchanged (ADR 0016)", () => {
+    expect(commandSpec("init")!.usage).toContain("[--agents claude|codex|both]");
   });
 
   test("job --help hides the job's test flags", () => {

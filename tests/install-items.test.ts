@@ -15,7 +15,8 @@ import { newBackupDir } from "../src/cli/backups.ts";
 import { applyInstall, removeInstall, repairInstall, resolveCodex } from "../src/cli/install.ts";
 import type { Report } from "../src/cli/install-support.ts";
 import { defaultConfig, loadConfig, saveConfig } from "../src/hooks/lib/config.ts";
-import { CRANK_ALLOW_RULES, crankHooks } from "../src/cli/settings.ts";
+import { crankHooks } from "../src/cli/agents.ts";
+import { CRANK_ALLOW_RULES } from "../src/cli/settings.ts";
 import { V1_DDL } from "./fixtures/schema-v1.ts";
 
 function cli(cwd: string, codexHome: string, crankHome: string, ...args: string[]): CliRun {

@@ -12,7 +12,7 @@ import { gitExcludeFile, installPaths, claudeSettingsFiles } from "./install-sup
 import { clearJournal, hasJournal, readJournal, writeJournal } from "./install-journal.ts";
 import { printChecks, projectChecks } from "./doctor.ts";
 import { repairInstall } from "./install.ts";
-import { claudeSkipped } from "./install-agents.ts";
+import { claudeSkipped } from "./agents/claude.ts";
 import { userCodexConfigPath } from "./codex-trust.ts";
 import { crankHome } from "../hooks/lib/user-state.ts";
 import { loadConfig } from "../hooks/lib/config.ts";
@@ -28,6 +28,7 @@ import { fullScan } from "../hooks/lib/scanner.ts";
 import { commitIndex } from "../hooks/lib/store.ts";
 import { CLI_LOCK_BUDGET_MS } from "../hooks/lib/lock.ts";
 import { detectRuntime } from "./runtime.ts";
+import { agentChoices } from "../hooks/lib/agents.ts";
 
 export async function run(args: string[]): Promise<number> {
   printUpdateNotice();
@@ -77,10 +78,13 @@ export async function run(args: string[]): Promise<number> {
     }
   }
 
-  // --agents claude|codex|both picks the wiring in one flag; it must agree with --codex if given.
+  // --agents picks the wiring in one flag, from the agent registry (ADR 0016) plus `both`;
+  // it must agree with --codex if given.
   const agents = typeof flags.agents === "string" ? flags.agents : null;
-  if (agents !== null && !["claude", "codex", "both"].includes(agents)) {
-    console.error(`crank-mem: invalid --agents ${agents} (expected: claude | codex | both)`);
+  if (agents !== null && !agentChoices().includes(agents)) {
+    console.error(
+      `crank-mem: invalid --agents ${agents} (expected: ${agentChoices().join(" | ")})`,
+    );
     return 1;
   }
   if (agents !== null && typeof flags.codex === "string") {

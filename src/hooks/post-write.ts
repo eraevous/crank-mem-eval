@@ -5,13 +5,12 @@ import {
   findProjectRoot,
   runAdvisoryHook,
   repoRelative,
-  type HookPayload,
 } from "./lib/hook-io.ts";
 import { loadConfig, CRANK_DIR } from "./lib/config.ts";
 import { commitIndex } from "./lib/store.ts";
 import { indexFile } from "./lib/scanner.ts";
 import { HOOK_LOCK_BUDGET_MS } from "./lib/lock.ts";
-import { parseApplyPatch } from "./lib/apply-patch.ts";
+import { hookEvent, type HookEvent } from "./lib/payload-adapters.ts";
 import { enableDebug, debugEvent, safePath } from "./lib/debug.ts";
 
 // PostToolUse hook: re-index of written files. Claude matcher is
@@ -35,10 +34,7 @@ interface WriteScan {
   skip: { reason: SkipReason; dir?: string } | null;
 }
 
-function toWriteOps(payload: HookPayload, root: string, cwd: string): WriteScan {
-  const toolName = payload.tool_name;
-  const toolInput = payload.tool_input ?? {};
-
+function toWriteOps(event: HookEvent, root: string, cwd: string): WriteScan {
   // Relative tool paths are relative to the session cwd, which may be a
   // subdirectory of the project root.
   const rel = (p: string) => repoRelative(root, cwd, p);
@@ -51,32 +47,19 @@ function toWriteOps(payload: HookPayload, root: string, cwd: string): WriteScan 
   // filename means no sensitive basename can reach the log.
   const dirOf = (p: string): string => path.dirname(path.isAbsolute(p) ? p : path.resolve(cwd, p));
 
-  if (toolName === "Write" || toolName === "Edit" || toolName === "MultiEdit") {
-    const p = toolInput.file_path;
-    if (typeof p !== "string") return { ops: [], skip: { reason: "no-path" } };
-    const r = rel(p);
-    if (!r) return { ops: [], skip: { reason: "outside-root", dir: dirOf(p) } };
-    if (internal(r)) return { ops: [], skip: { reason: "crank-internal", dir: path.dirname(r) } };
-    return { ops: [{ relPath: r, deleted: false }], skip: null };
+  const writes = event.writes;
+  if (writes === null) return { ops: [], skip: { reason: "unhandled-tool" } };
+  const out: WriteOp[] = [];
+  let skip: WriteScan["skip"] = null;
+  for (const w of writes) {
+    const r = rel(w.path);
+    // A patch can touch several files; one unindexable path among indexable
+    // ones is not a skip, so only the all-empty case reports a reason.
+    if (!r) skip ??= { reason: "outside-root", dir: dirOf(w.path) };
+    else if (internal(r)) skip ??= { reason: "crank-internal", dir: path.dirname(r) };
+    else out.push({ relPath: r, deleted: w.deleted });
   }
-
-  if (toolName === "apply_patch") {
-    const cmd = toolInput.command;
-    if (typeof cmd !== "string") return { ops: [], skip: { reason: "no-path" } };
-    const out: WriteOp[] = [];
-    let skip: WriteScan["skip"] = null;
-    for (const op of parseApplyPatch(cmd)) {
-      const r = rel(op.path);
-      // A patch can touch several files; one unindexable path among indexable
-      // ones is not a skip, so only the all-empty case reports a reason.
-      if (!r) skip ??= { reason: "outside-root", dir: dirOf(op.path) };
-      else if (internal(r)) skip ??= { reason: "crank-internal", dir: path.dirname(r) };
-      else out.push({ relPath: r, deleted: op.deleted });
-    }
-    return { ops: out, skip: out.length ? null : (skip ?? { reason: "no-path" }) };
-  }
-
-  return { ops: [], skip: { reason: "unhandled-tool" } };
+  return { ops: out, skip: out.length ? null : (skip ?? { reason: "no-path" }) };
 }
 
 async function main(): Promise<void> {
@@ -91,10 +74,11 @@ async function main(): Promise<void> {
   const config = loadConfig(crankDir);
   enableDebug(crankDir, config.debug);
 
-  const { ops, skip } = toWriteOps(payload, root, cwd);
+  const event = hookEvent(payload);
+  const { ops, skip } = toWriteOps(event, root, cwd);
   if (ops.length === 0) {
     debugEvent("no-write-ops", {
-      tool: typeof payload.tool_name === "string" ? payload.tool_name : null,
+      tool: event.tool,
       ...skip,
     });
     return;
@@ -134,7 +118,7 @@ async function main(): Promise<void> {
     return dirty ? index : null;
   });
   debugEvent("reindex", {
-    tool: typeof payload.tool_name === "string" ? payload.tool_name : null,
+    tool: event.tool,
     paths: ops.map((o) => safePath(o.relPath)),
     deletes: ops.filter((o) => o.deleted).length,
     skipped,
