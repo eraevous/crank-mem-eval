@@ -147,6 +147,31 @@ describe("digest job (black-box)", () => {
     expect(system(second)).toBe(system(call));
   }, 30_000);
 
+  // ADR 0016 step 4 pin, written before the transcript reader moved behind the
+  // Claude adapter: the job reads every spool entry as a Claude transcript,
+  // whatever its `agent` field says, so an entry with a missing, unknown or
+  // non-string agent is digested exactly as a Claude one.
+  test.each([
+    ["missing", undefined],
+    ["codex", "codex"],
+    ["an unknown name", "gemini"],
+    ["not a string", 7],
+  ])("an entry whose agent is %s is read as a Claude transcript", (_, agent) => {
+    const j = journey(digestProject({}, temps), [{ lines: okStream(SAMPLE_DIGEST) }], {
+      skipJob: true,
+    });
+    const file = path.join(j.home, "spool", "s1.json");
+    const entry = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (agent === undefined) delete entry.agent;
+    else entry.agent = agent;
+    fs.writeFileSync(file, JSON.stringify(entry));
+    expect(rerun(j).status).toBe(0);
+    expect(j.fake.calls().length).toBe(1);
+    expect(j.fake.calls()[0]!.stdin).toBe(TEMPLATE_CEREBRUM_BLOCK + "[TRANSCRIPT]\n" + EXPECTED);
+    expect(spoolFiles(j.home)).toEqual([]);
+    expect(savedPosition(j.root)).not.toBeNull();
+  });
+
   test.each([
     ["deleted", null],
     ["without a ## heading", "# Cerebrum\n\nnotes\n"],
