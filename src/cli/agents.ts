@@ -2,6 +2,8 @@ import type { CrankConfig } from "../hooks/lib/config.ts";
 import type { AgentName } from "../hooks/lib/agents.ts";
 import type { InstallItem } from "./install-support.ts";
 import type { TrustStatus } from "./codex-trust.ts";
+import type { Position } from "../hooks/lib/memory.ts";
+import type { Distilled } from "../daemon/transcript.ts";
 import { commandFormsAt, guardedCommand, HOOK_SCRIPTS, type HooksMap } from "./settings.ts";
 import { claudeAdapter } from "./agents/claude.ts";
 import { codexAdapter } from "./agents/codex.ts";
@@ -32,6 +34,8 @@ export interface AgentAdapter {
     write(root: string, backup: (file: string) => void): string[];
     remove(root: string): string[];
   };
+  /** Distill this agent's session transcript for a digest. Claude only; Codex sessions are not digested. */
+  readTranscript?(file: string, after: Position | null, maxChars: number): Distilled;
 }
 
 /** Every adapter, in install order: Claude Code, then Codex. */
@@ -41,6 +45,18 @@ export function agentAdapter(name: AgentName): AgentAdapter {
   const found = AGENTS.find((a) => a.name === name);
   if (!found) throw new Error(`no adapter for agent ${name}`);
   return found;
+}
+
+/**
+ * The transcript reader for a spool entry's `agent` field. An agent without a
+ * reader, or a missing or unknown name, gets Claude's: the job has always read
+ * every entry as a Claude transcript, and step 4 of ADR 0016 keeps that.
+ */
+export function transcriptReader(agent: unknown): NonNullable<AgentAdapter["readTranscript"]> {
+  const own = AGENTS.find((a) => a.name === agent)?.readTranscript;
+  const reader = own ?? claudeAdapter.readTranscript;
+  if (!reader) throw new Error("the Claude adapter has no transcript reader");
+  return reader;
 }
 
 /** The hook entries crank-mem wires, per agent. */

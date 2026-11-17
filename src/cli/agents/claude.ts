@@ -26,9 +26,10 @@ import {
   type Report,
 } from "../install-support.ts";
 import type { AgentAdapter } from "../agents.ts";
+import { distill } from "../../daemon/transcript.ts";
 
 // The Claude Code adapter (ADR 0016): its hook map, command paths and the
-// wiring of .claude/settings(.local).json.
+// wiring of .claude/settings(.local).json, and its transcript reader.
 
 /**
  * The subagent types that get the SubagentStart excerpt. The anchored list
@@ -140,4 +141,5 @@ export const claudeAdapter: AgentAdapter = {
   commandPath,
   enabled: (config) => !claudeSkipped(config),
   wiring: claudeWiring,
+  readTranscript: distill,
 };

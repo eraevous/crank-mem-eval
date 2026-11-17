@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseArgs, positive } from "../cli/args.ts";
+import { transcriptReader } from "../cli/agents.ts";
 import { COMMANDS } from "../cli/commands.ts";
 import { CEREBRUM_FILE, splitPreamble } from "../hooks/lib/cerebrum-files.ts";
 import { CRANK_DIR, errorMessage, loadConfig } from "../hooks/lib/config.ts";
@@ -13,7 +14,6 @@ import { EMBED_MODEL, embed } from "./embedder.ts";
 import { CONSOLIDATE_EVERY_MS, consolidate } from "./consolidate.ts";
 import { askClaude, RUN_TIMEOUT_MS } from "./gateway.ts";
 import { redact } from "./redact.ts";
-import { distill } from "./transcript.ts";
 
 // `crank-mem job <stem>`: digest one spool entry's new transcript records into
 // its project's store. Exit 0 settles the entry for this sweep; exit 1 asks
@@ -68,7 +68,7 @@ async function digest(
 ): Promise<number> {
   const { timeoutMs } = opts;
   const pos = memory.position(stem);
-  const d = distill(entry.transcriptPath, pos, MAX_DELTA_CHARS);
+  const d = transcriptReader(entry.agent)(entry.transcriptPath, pos, MAX_DELTA_CHARS);
   if (pos === null && fs.statSync(entry.transcriptPath).size > PARK_SIZE && d.records === 0) {
     settleEntry(stem, entry.updatedAt, "park");
     return 0;

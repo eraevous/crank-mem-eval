@@ -124,6 +124,10 @@ export function agentNames(): string[];            // what --agents accepts, plu
 3. Hook half: `agentFor` and `parsePayload`; `post-write`, `post-read`, `session-start` and
    `usage.ts` read `HookEvent` instead of `tool_name` and `isCodexPayload`.
 4. `readTranscript` on the Claude adapter; the daemon reaches `distill` through it.
+   *As built (2026-11-17):* `transcriptReader(entry.agent)` in `src/cli/agents.ts` picks the
+   reader. An agent without one, or a missing or unknown `agent` field, gets Claude's, because the
+   job has always read every spool entry as a Claude transcript; `tests/digest-job.test.ts` pins
+   that for a missing, `codex`, unknown and non-string agent, written before the move.
 
 New tests (black-box where the behavior is reachable, per CLAUDE.md), **written before the move
 so they pin today's behavior** (Kate, review round 1):
