@@ -58,6 +58,20 @@ name, ADR 0007 `turn_id`). `parseApplyPatch` and `shell-reads.ts` stay where the
 and Claude adapters call them. Path resolution, the containment gate and the `.crank/` skip stay
 in the hooks, so the security-relevant code does not move.
 
+**As built (step 3, 2026-11-17), two changes to the sketch above, both to keep behavior unchanged:**
+
+- The payload adapters live in `src/hooks/lib/payload-adapters.ts`, not `agents.ts`, so
+  `agents.ts` stays import-free (the CLI and `commands.ts` load it for the names alone).
+- Which agent sent a payload and which paths it carries are separate questions. `agentFor` answers
+  the first by `owns`, in order `[codex, claude]`. Paths are answered by **tool**: each adapter has
+  `writes(payload)` and `reads(payload)` that return `null` for a tool that isn't theirs, and
+  `hookEvent` asks the owner first, then the others. Today's hooks switch on `tool_name` alone, so
+  an `apply_patch` payload missing its Codex markers is still indexed; dispatching paths by owner
+  would have turned that into silent staleness (the risk named in the dissent review below).
+  `HookEvent.writes` is `null` for a tool no adapter writes with (debug reason `unhandled-tool`)
+  and empty for a write tool naming no path (`no-path`). `tests/payload-adapters.test.ts` pins both
+  questions and was written before the move.
+
 ### CLI half: `src/cli/agents.ts`
 
 ```ts

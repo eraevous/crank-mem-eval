@@ -1,7 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { isObj, isSensitiveFile } from "./config.ts";
-import { isCodexPayload, type HookPayload } from "./hook-io.ts";
+import type { HookPayload } from "./hook-io.ts";
+import { agentFor } from "./payload-adapters.ts";
 import { memoryPath } from "./memory.ts";
 
 // One JSON line per use of a memory or code channel, appended to the
@@ -131,7 +132,7 @@ export function recordUsage(root: string, actor: UsageActor, event: UsageEvent):
 /** The agent and session a hook payload names. */
 export function hookActor(payload: HookPayload): UsageActor {
   return {
-    agent: isCodexPayload(payload) ? "codex" : "claude",
+    agent: agentFor(payload).name,
     session: typeof payload.session_id === "string" ? payload.session_id : null,
   };
 }

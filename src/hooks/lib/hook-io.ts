@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { CRANK_DIR, errorMessage, isSensitiveFile } from "./config.ts";
 import { flushDebug } from "./debug.ts";
+import { agentFor } from "./payload-adapters.ts";
 
 // Hook I/O helpers. Hooks are advisory-only: they must never fail the tool
 // call, so payload parsing degrades to null and callers exit 0.
@@ -31,17 +32,9 @@ export function parsePayload(raw: string): HookPayload | null {
   }
 }
 
-/**
- * Codex tool payloads carry a turn_id, but its SessionStart does not (ADR 0007),
- * so also match the Codex transcript name, `rollout-<ts>-<uuid>.jsonl` (ADR 0006).
- * Claude carries neither.
- */
+/** True when Codex sent the payload (ADR 0016: the Codex payload adapter decides). */
 export function isCodexPayload(payload: HookPayload): boolean {
-  if (typeof payload.turn_id === "string") return true;
-  return (
-    typeof payload.transcript_path === "string" &&
-    path.basename(payload.transcript_path).startsWith("rollout-")
-  );
+  return agentFor(payload).name === "codex";
 }
 
 /**

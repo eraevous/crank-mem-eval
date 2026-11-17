@@ -6,7 +6,6 @@ import {
   findProjectRoot,
   emitAdditionalContext,
   runAdvisoryHook,
-  isCodexPayload,
 } from "./lib/hook-io.ts";
 import { loadConfig, CRANK_DIR } from "./lib/config.ts";
 import { loadIndex, commitIndex } from "./lib/store.ts";
@@ -16,6 +15,7 @@ import { sessionStartInjection } from "./lib/injection.ts";
 import { enableDebug, debugEvent } from "./lib/debug.ts";
 import { hookActor, recordUsage } from "./lib/usage.ts";
 import { registerProject } from "./lib/registry.ts";
+import { agentFor } from "./lib/payload-adapters.ts";
 
 // SessionStart hook (Claude Code and Codex). Every source re-injects, compaction
 // included. Refreshes the index under lock, then emits the injection via
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
   }
 
   const result = sessionStartInjection(root, crankDir, config, index, {
-    codex: isCodexPayload(payload),
+    codex: agentFor(payload).name === "codex",
     source: typeof payload.source === "string" ? payload.source : null,
     stalenessNote,
   });
