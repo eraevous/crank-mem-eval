@@ -76,9 +76,12 @@ the `.crank/` ignore block back to `.gitignore` or `.git/info/exclude` when
 it is missing. An upgrade that changes nothing
 writes no backup.
 
-Hook commands are guarded, `[ ! -f <script> ] || bun <script>`, so a
-checkout that has the committed settings file but no `.crank/hooks/` exits 0
-instead of reporting a hook error. Codex hashes each hook command for its
+Hook commands are guarded, `[ ! -f <script> ] || bun --env-file=/dev/null <script>`,
+so a checkout that has the committed settings file but no `.crank/hooks/` exits 0
+instead of reporting a hook error. `--env-file=/dev/null` stops bun loading the
+project's `.env` files into the hook, and so into a daemon the hook starts: a
+checkout can't set crank-mem's environment, such as `CRANK_HOME` or proxy and
+TLS settings. Upgrade rewrites older command forms to this one. Codex hashes each hook command for its
 trust check, so the first upgrade that rewrites the Codex commands makes
 Codex ask once for a hooks review: open codex in the project and accept it.
 An install made with `--codex-trust write` skips that, because upgrade

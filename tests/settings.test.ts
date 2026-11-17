@@ -110,10 +110,13 @@ describe("mergeHooksIntoFile", () => {
     );
   });
 
-  test("re-merge replaces bare and guarded crank commands without duplicating", () => {
+  test("re-merge replaces bare and guarded crank commands, older runners included, without duplicating", () => {
     const bare = "bun .crank/hooks/session-start.ts";
-    const guarded = "[ ! -f .crank/hooks/session-start.ts ] || bun .crank/hooks/session-start.ts";
-    for (const old of [bare, guarded]) {
+    const oldGuarded =
+      "[ ! -f .crank/hooks/session-start.ts ] || bun .crank/hooks/session-start.ts";
+    const guarded =
+      "[ ! -f .crank/hooks/session-start.ts ] || bun --env-file=/dev/null .crank/hooks/session-start.ts";
+    for (const old of [bare, oldGuarded, guarded]) {
       const f = tmpFile("hooks.json");
       fs.writeFileSync(
         f,
@@ -173,13 +176,13 @@ describe("mergeHooksIntoFile", () => {
 });
 
 /** Run a wired command the way the agents do: through sh, in the project. */
-function runWired(command: string, root: string, stdin = "{}") {
+function runWired(command: string, root: string, stdin = "{}", env: Record<string, string> = {}) {
   const res = spawnSync("sh", ["-c", command], {
     cwd: root,
     input: stdin,
     encoding: "utf-8",
     timeout: 15_000,
-    env: childEnv({ CLAUDE_PROJECT_DIR: root }),
+    env: childEnv({ CLAUDE_PROJECT_DIR: root, ...env }),
   });
   return { status: res.status ?? -1, stdout: res.stdout };
 }
@@ -205,6 +208,25 @@ describe("wired commands", () => {
     const run = runWired(command, root, JSON.stringify(claudeSessionStart(root)));
     expect(run.status).toBe(0);
     expect(JSON.parse(run.stdout).hookSpecificOutput.additionalContext).toContain("cerebrum");
+  });
+
+  test("a project's .env files do not reach the hook's environment", () => {
+    // A checkout controls its .env; bun loads .env, .env.local and .env.<NODE_ENV>
+    // by default, and a daemon the hook starts would inherit them.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "crank-env-file-"));
+    fs.mkdirSync(path.join(root, ".crank", "hooks"), { recursive: true });
+    for (const name of [".env", ".env.local", ".env.production"])
+      fs.writeFileSync(path.join(root, name), `CRANK_PROBE_${name.replace(/\W/g, "_")}=leaked\n`);
+    const probe =
+      "const leaked = Object.keys(process.env).filter((k) => k.startsWith('CRANK_PROBE_'));\n" +
+      "process.stdout.write(JSON.stringify(leaked));\n";
+    fs.writeFileSync(path.join(root, ".crank", "hooks", "session-start.ts"), probe);
+    for (const agent of ["claude", "codex"] as const) {
+      const command = crankHooks("bun", agent).SessionStart![0]!.hooks[0]!.command;
+      const run = runWired(command, root, "{}", { NODE_ENV: "production" });
+      expect(run.status).toBe(0);
+      expect(JSON.parse(run.stdout)).toEqual([]);
+    }
   });
 });
 
