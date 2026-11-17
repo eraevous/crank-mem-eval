@@ -5,7 +5,7 @@ import { REPO_ROOT, makeCrankHome, makeProject, withEnv } from "./helpers.ts";
 import { cliVersion, REPO_ROOT as CLONE_ROOT } from "../src/cli/version.ts";
 import { newBackupDir } from "../src/cli/backups.ts";
 import { applyInstall, removeInstall, repairInstall, resolveCodex } from "../src/cli/install.ts";
-import { crankHooks } from "../src/cli/settings.ts";
+import { crankHooks } from "../src/cli/agents.ts";
 import { defaultConfig, loadConfig, saveConfig } from "../src/hooks/lib/config.ts";
 import { AGENT_NAMES } from "../src/hooks/lib/agents.ts";
 

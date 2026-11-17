@@ -2,10 +2,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { isObj, type CrankConfig } from "../hooks/lib/config.ts";
-import { commandForms } from "./agents.ts";
+import { AGENT_NAMES, type AgentName } from "../hooks/lib/agents.ts";
 
 // Additive wiring of hook entries into agent settings files, and its exact
-// inverse. Merge adds missing entries and refreshes only command forms
+// inverse. This module imports no adapter and not the registry in agents.ts:
+// the adapters build on it, so an import back would make loading an adapter
+// on its own depend on import order (crank-mem-eval#14 review). The registry's
+// names (crankHooks, hookCommand, SUBAGENT_MATCHER) import from agents.ts.
+// Merge adds missing entries and refreshes only command forms
 // crank-mem itself emitted; removal deletes exactly the entries whose
 // command references .crank/hooks/. Files are written as 2-space JSON.
 
@@ -33,11 +37,6 @@ export interface HookGroup {
 }
 
 export type HooksMap = Record<string, HookGroup[]>;
-
-// The per-agent parts (hook map, command path, wiring, trust) live in the agent
-// adapters under src/cli/agents/ (ADR 0016); these re-exports keep the names
-// callers and tests already import from here.
-export { crankHooks, hookCommand, isGeneratedHookCommand, SUBAGENT_MATCHER } from "./agents.ts";
 
 /**
  * The bun runner. `--env-file=/dev/null` stops bun loading the project's `.env`
@@ -84,6 +83,36 @@ export const HOOK_SCRIPTS = [
   "session-end.ts",
   "subagent-start.ts",
 ];
+
+/**
+ * The script path as each agent's hook commands spell it: Claude Code runs hooks
+ * from anywhere and needs `$CLAUDE_PROJECT_DIR`, Codex runs them from the
+ * project root. Each adapter's `commandPath` is its entry here; the table lives
+ * in this module so the command forms below need no adapter.
+ */
+export const COMMAND_PATHS: Readonly<Record<AgentName, (script: string) => string>> = {
+  claude: (script) => `"$CLAUDE_PROJECT_DIR"/.crank/hooks/${script}`,
+  codex: (script) => `.crank/hooks/${script}`,
+};
+
+/** Every command form crank-mem has emitted for a script, for every runtime and agent. */
+export function commandForms(script: string): Set<string> {
+  return new Set(AGENT_NAMES.flatMap((agent) => commandFormsAt(COMMAND_PATHS[agent](script))));
+}
+
+let generatedForms: Set<string> | undefined;
+
+/**
+ * True only for a command exactly in a form crank-mem emits or has emitted, for
+ * one of its own scripts. A command that merely contains `.crank/hooks/` (one a
+ * repository edited to append shell, say) is not, so it never gets Codex trust
+ * written for it and Codex asks the user to review it.
+ */
+export function isGeneratedHookCommand(command: string | undefined): boolean {
+  if (!command) return false;
+  generatedForms ??= new Set(HOOK_SCRIPTS.flatMap((script) => [...commandForms(script)]));
+  return generatedForms.has(command);
+}
 
 function readJson(file: string): Record<string, unknown> {
   return JSON.parse(fs.readFileSync(file, "utf-8"));

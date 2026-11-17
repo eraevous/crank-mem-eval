@@ -108,6 +108,14 @@ export function agentNames(): string[];            // what --agents accepts, plu
   install, repair and remove output keeps today's order line for line.
 - `settings.ts` → `commandForms` iterates `AGENTS` instead of the literal pair, so every command
   form either agent has emitted is still recognised.
+  *As built (review fix, 2026-11-17):* `commandForms` and `isGeneratedHookCommand` live in
+  `settings.ts` and iterate `AGENT_NAMES` over `settings.ts` → `COMMAND_PATHS`, the per-agent path
+  table each adapter's `commandPath` is taken from. Iterating `AGENTS` made a cycle (adapter →
+  `settings.ts` → `agents.ts` → adapter), so an adapter imported first in a fresh process threw
+  `Cannot access 'claudeAdapter' before initialization` (Copilot, crank-mem-eval#14). `settings.ts`,
+  `codex-trust.ts` and `install-support.ts` import no adapter and not `agents.ts`;
+  `tests/module-load.test.ts` loads each module first in its own process. `agents.ts` re-exports the
+  two names, and `crankHooks`, `hookCommand` and `SUBAGENT_MATCHER` import from `agents.ts` only.
 - `init`'s `--agents` validates against `agentNames()`; the usage string in `commands.ts` is built
   from it. `both` stays accepted.
 - **Config shape does not change.** `claude: "skip"` and `codex: merge|skip|trust|review` keep their

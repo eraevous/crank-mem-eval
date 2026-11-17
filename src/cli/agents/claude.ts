@@ -2,6 +2,7 @@ import * as path from "node:path";
 import type { CrankConfig } from "../../hooks/lib/config.ts";
 import {
   addAllowRule,
+  COMMAND_PATHS,
   guardedCommand,
   hasCrankHooks,
   isCrankHookCommand,
@@ -38,7 +39,7 @@ import { distill } from "../../daemon/transcript.ts";
 export const SUBAGENT_MATCHER = "^(general-purpose|Explore|Plan|workflow-subagent)$";
 
 // Claude expands $CLAUDE_PROJECT_DIR.
-const commandPath = (script: string): string => `"$CLAUDE_PROJECT_DIR"/.crank/hooks/${script}`;
+const commandPath = COMMAND_PATHS.claude;
 
 function hooks(runtime: CrankConfig["runtime"]): HooksMap {
   const entry = (script: string): HookHandler => ({

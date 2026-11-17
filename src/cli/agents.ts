@@ -4,7 +4,7 @@ import type { InstallItem } from "./install-support.ts";
 import type { TrustStatus } from "./codex-trust.ts";
 import type { Position } from "../hooks/lib/memory.ts";
 import type { Distilled } from "../daemon/transcript.ts";
-import { commandFormsAt, guardedCommand, HOOK_SCRIPTS, type HooksMap } from "./settings.ts";
+import { guardedCommand, type HooksMap } from "./settings.ts";
 import { claudeAdapter } from "./agents/claude.ts";
 import { codexAdapter } from "./agents/codex.ts";
 
@@ -12,9 +12,10 @@ import { codexAdapter } from "./agents/codex.ts";
 // adapter under src/cli/agents/; AGENTS lists them in install order. The hook
 // half is src/hooks/lib/agents.ts, which holds the names both halves share.
 //
-// The adapters import settings.ts and codex-trust.ts, which import this file
-// back for the names they re-export or call. Every use across that cycle is
-// inside a function body, never at module evaluation, so load order is safe.
+// Nothing an adapter imports reaches this file: the adapters take the
+// settings-file helpers and command forms from settings.ts, which imports
+// no adapter, so each adapter loads on its own in a fresh process
+// (tests/module-load.test.ts).
 
 export interface AgentAdapter {
   name: AgentName;
@@ -76,23 +77,8 @@ export function hookCommand(
   return guardedCommand(runtime, agentAdapter(agent).commandPath(script));
 }
 
-/** Every command form crank-mem has emitted for a script, for every runtime and agent. */
-export function commandForms(script: string): Set<string> {
-  return new Set(AGENTS.flatMap((a) => commandFormsAt(a.commandPath(script))));
-}
-
-let generatedForms: Set<string> | undefined;
-
-/**
- * True only for a command exactly in a form crank-mem emits or has emitted, for
- * one of its own scripts. A command that merely contains `.crank/hooks/` (one a
- * repository edited to append shell, say) is not, so it never gets Codex trust
- * written for it and Codex asks the user to review it.
- */
-export function isGeneratedHookCommand(command: string | undefined): boolean {
-  if (!command) return false;
-  generatedForms ??= new Set(HOOK_SCRIPTS.flatMap((script) => [...commandForms(script)]));
-  return generatedForms.has(command);
-}
+// Command forms need every agent's command path but no adapter: settings.ts
+// owns them, and these re-exports keep the names callers import from here.
+export { commandForms, isGeneratedHookCommand } from "./settings.ts";
 
 export { SUBAGENT_MATCHER } from "./agents/claude.ts";

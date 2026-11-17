@@ -17,7 +17,7 @@ import {
   type CliRun,
 } from "./helpers.ts";
 import { claudeSessionStart } from "./fixtures/payloads.ts";
-import { crankHooks } from "../src/cli/settings.ts";
+import { crankHooks } from "../src/cli/agents.ts";
 import { crankTrust } from "../src/cli/codex-trust.ts";
 import { memoryPath, openMemory } from "../src/hooks/lib/memory.ts";
 import { unknownFlag } from "../src/cli/args.ts";

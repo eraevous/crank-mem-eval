@@ -2,6 +2,7 @@ import * as path from "node:path";
 import type { CrankConfig } from "../../hooks/lib/config.ts";
 import {
   ensureCodexFeatures,
+  COMMAND_PATHS,
   guardedCommand,
   mergeHooksIntoFile,
   removeCodexFeatures,
@@ -36,7 +37,7 @@ import type { AgentAdapter } from "../agents.ts";
 // .codex/hooks.json and .codex/config.toml, and the trusted_hash step (ADR 0002).
 
 // Codex runs hooks with the project cwd.
-const commandPath = (script: string): string => `.crank/hooks/${script}`;
+const commandPath = COMMAND_PATHS.codex;
 
 // File history, Stop, SessionEnd and SubagentStart are Claude-only; Codex has no digests.
 function hooks(runtime: CrankConfig["runtime"]): HooksMap {
