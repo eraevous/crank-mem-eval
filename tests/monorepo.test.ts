@@ -6,7 +6,16 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { Database } from "bun:sqlite";
-import { git, gitCommit, makeProject, runCli, runHook, type CliRun } from "./helpers.ts";
+import {
+  git,
+  gitCommit,
+  makeCrankHome,
+  makeProject,
+  runCli,
+  runHook,
+  stopDigests,
+  type CliRun,
+} from "./helpers.ts";
 import { claudeSessionStart } from "./fixtures/payloads.ts";
 
 function cli(cwd: string, codexHome: string, ...args: string[]): CliRun {
@@ -29,6 +38,30 @@ describe("monorepo subdirectory project", () => {
       expect(ignored(root, `packages/app/.crank/${rel}`)).toBe(true);
     expect(git(root, "status", "--porcelain", "-uall")).not.toContain(".crank/");
     expect(cli(app, codexHome, "uninstall", "--yes", "--keep-crank").status).toBe(0);
+    expect(fs.readFileSync(path.join(root, ".git/info/exclude"), "utf-8")).not.toContain(".crank/");
+  });
+
+  // Codex review on PR #15: two packages share the enclosing exclude file and its one block.
+  test("uninstalling one package keeps the shared exclude block while another package uses it", () => {
+    const { root, codexHome } = makeProject({
+      "packages/a/src/a.ts": "export const a = 1;\n",
+      "packages/b/src/b.ts": "export const b = 1;\n",
+    });
+    // One CRANK_HOME for every call: the registry is how uninstall finds the other package.
+    const home = makeCrankHome();
+    stopDigests(home);
+    const run = (cwd: string, ...args: string[]) =>
+      runCli(cwd, args, { CODEX_HOME: codexHome, CRANK_HOME: home });
+    const a = path.join(root, "packages/a");
+    const b = path.join(root, "packages/b");
+    for (const p of [a, b])
+      expect(run(p, "init", "--yes", "--git", "exclude", "--codex", "skip").status).toBe(0);
+    expect(ignored(root, "packages/b/.crank/cerebrum.md")).toBe(true);
+    const off = run(a, "uninstall", "--yes", "--keep-crank");
+    expect(off.status).toBe(0);
+    expect(off.stdout).toContain(`${b} still uses it`);
+    expect(ignored(root, "packages/b/.crank/cerebrum.md")).toBe(true);
+    expect(run(b, "uninstall", "--yes", "--keep-crank").status).toBe(0);
     expect(fs.readFileSync(path.join(root, ".git/info/exclude"), "utf-8")).not.toContain(".crank/");
   });
 

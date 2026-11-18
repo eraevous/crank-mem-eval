@@ -1,4 +1,6 @@
 import * as path from "node:path";
+import { readJsonObject } from "../hooks/lib/config.ts";
+import { installedRoots } from "../hooks/lib/registry.ts";
 import {
   addIgnoreLines,
   ensureCrankGitignore,
@@ -71,6 +73,24 @@ function ensureGitIgnoreState(ctx: InstallContext, r: Report): string | null {
 const EXCLUDE_NO_REPO =
   "crank-mem: warning: git mode is exclude, but this project is not inside a git repository, so nothing keeps .crank/ out of git if one is created later.";
 
+/**
+ * Another installed project in exclude mode whose block lives in the same exclude file, or null.
+ *
+ * Added in our line (see ATTRIBUTION.md; Codex review on PR #15): packages of one monorepo, and a
+ * main checkout with its linked worktrees, share the enclosing repository's exclude file and its
+ * one unanchored `.crank/` block, so removing it for one project would expose the others' .crank/.
+ */
+function otherExcludeUser(root: string, excludeFile: string): string | null {
+  const target = path.resolve(excludeFile);
+  for (const other of installedRoots()) {
+    if (path.resolve(other) === path.resolve(root)) continue;
+    if (readJsonObject(path.join(other, ".crank", "config.json"))?.git !== "exclude") continue;
+    const file = modeIgnoreFile(other, "exclude");
+    if (file !== null && path.resolve(file) === target) return other;
+  }
+  return null;
+}
+
 export const gitIgnoreState: InstallItem = {
   apply(ctx) {
     const r = report();
@@ -101,7 +121,12 @@ export const gitIgnoreState: InstallItem = {
       removeIgnoreLines(gitignore);
       pushLine(r.lines, deleteNowEmpty(root, crankDir, gitignore, isBlank));
     });
-    attemptRemoval(r, root, gitExclude, () => removeIgnoreLines(gitExclude));
+    const sharer = otherExcludeUser(root, gitExclude);
+    if (sharer === null) attemptRemoval(r, root, gitExclude, () => removeIgnoreLines(gitExclude));
+    else
+      r.lines.push(
+        `  kept the crank-mem .crank/ ignore block in ${path.relative(root, gitExclude)}: ${sharer} still uses it`,
+      );
     return r;
   },
 };
