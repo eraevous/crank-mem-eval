@@ -1,0 +1,37 @@
+# Requirement record, committed verbatim below this header (Braided pilot, lane-rules §14).
+# Source: relay-kit-private kate-replies:replies/HO-CRK-20261117-CFKR--1322d6bcc1c4.md, section "5. Redaction"
+# Written by API Kate (gpt-6.1-sol) 2026-11-18T05:38:21Z. Do not edit; a change is a new version from her.
+# She labelled it a proposed payload (she lacked a round-2 record to match the shape) and gave no id;
+# the file name is the lane's (author_role: implementer for the name only).
+authored_by: chatgpt:kate
+author_role: independent
+source_reference: "handoffs/outputs/HO-CRK-20261117-CFKR.md — Round 4, item 5"
+target_revision: a7610c8
+requirement: |
+  Keyed-value and URL-credential redaction must avoid superlinear
+  scanning on long name-character sequences joined by hyphens.
+  Preserve v0.16 masking behavior and additionally mask names with
+  repeated separators, including APP__SECRET=abc.
+acceptance:
+  - |
+    Exercise keyed-value and URL-credential matching separately,
+    and the complete redactor, using "a-" repeated 40,000 times.
+    The complete-redactor regression test must finish under 300 ms
+    in the designated test environment.
+  - |
+    Use increasing input sizes and algorithm inspection to assess
+    linear scaling; one timing threshold alone is insufficient.
+  - |
+    Retain positive regression fixtures for v0.16 masking behavior,
+    including keyed secrets and URL credentials.
+  - |
+    APP__SECRET=abc is masked.
+  - |
+    MAX_TOKENS=4096, token_count = 5, and password_hint: blue
+    remain unmasked.
+open_question: |
+  URL matching now limits schemes to 32 characters. Determine whether
+  v0.16 masked credentials with longer schemes. If so, preserving every
+  v0.16 case and imposing this limit are conflicting requirements;
+  explicitly resolve the compatibility exception before acceptance.
+assessment: not assessed
