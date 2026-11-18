@@ -50,6 +50,9 @@ describe("shellReadPaths", () => {
       // `<<-` strips leading tabs, so its terminator line may be tab-indented.
       ["cat <<-EOF > out.txt\n\tcat secret.ts\n\tEOF\ncat a.ts", ["a.ts"]],
       ["cat <<- 'EOF'\n\tbody\n\t\tEOF\nsed -n 1p a.ts", ["a.ts"]],
+      // Only tabs are stripped: a space-indented line is still body (CRK-REQ-006).
+      ["cat <<-EOF\n  EOF\ncat secret.ts\nEOF\ncat a.ts", ["a.ts"]],
+      ["cat <<-EOF\n\t EOF\ncat secret.ts\n\tEOF\ncat a.ts", ["a.ts"]],
       // Plain `<<` keeps tabs: an indented line is body, not the terminator.
       ["cat <<EOF\n\tEOF\ncat secret.ts\nEOF\ncat a.ts", ["a.ts"]],
       // `<<<` is a here-string: no body follows, so later lines are commands.
