@@ -374,7 +374,10 @@ describe("upgrade --all", () => {
     fs.rmSync(config);
     fs.mkdirSync(config);
     const run = upgradeAll(home, fakeTool("bun", 0));
-    expect(run.stderr).toContain(`${a}: failed (`);
+    // CRK-REQ-008 (Kate, round 5): the line names the root and the reason.
+    expect(run.stderr).toContain(`${a}: failed (EISDIR`);
+    const line = run.stderr.split("\n").find((l) => l.startsWith(`${a}: failed (`));
+    expect(line?.endsWith(")")).toBe(true);
     expect(vendored(b)).toBe(cliVersion());
     expect(run.status).toBe(1);
   });
