@@ -365,6 +365,19 @@ describe("upgrade --all", () => {
     expect(run.stdout.split("→ .crank/code.db")).toHaveLength(2);
     expect(fs.statSync(storeIn(b)).isFile()).toBe(true);
   });
+
+  // Added in our line (see ATTRIBUTION.md; Codex review on our PR #8): a throw in one project's
+  // repair, such as a config.json that is a directory, is that project's failure, not the batch's.
+  test("a project whose config cannot be read still lets the others repair, and exits 1", () => {
+    const { home, a, b } = twoProjects();
+    const config = path.join(a, ".crank/config.json");
+    fs.rmSync(config);
+    fs.mkdirSync(config);
+    const run = upgradeAll(home, fakeTool("bun", 0));
+    expect(run.stderr).toContain(`${a}: failed (`);
+    expect(vendored(b)).toBe(cliVersion());
+    expect(run.status).toBe(1);
+  });
 });
 
 describe("digest on and the embedder", () => {

@@ -139,7 +139,16 @@ function removeRetiredFiles(crankDir: string): void {
 export async function repairAll(): Promise<number> {
   let status = 0;
   for (const root of registeredRoots()) {
-    const result = await repairProject(root, { lock: true });
+    // Added in our line (see ATTRIBUTION.md; Codex review on our PR #8): one project's unreadable
+    // or unwritable config must not stop the rest. Report it, fail the batch, carry on.
+    let result: Awaited<ReturnType<typeof repairProject>>;
+    try {
+      result = await repairProject(root, { lock: true });
+    } catch (err) {
+      console.error(`${root}: failed (${errorMessage(err)})`);
+      status = 1;
+      continue;
+    }
     if (result === "missing") console.log(`${root}: missing, skipped`);
     else if (result === "busy") console.log(`${root}: busy, skipped`);
     else if (result === "failed") status = 1;
