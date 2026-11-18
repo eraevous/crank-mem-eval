@@ -1,0 +1,30 @@
+# Requirement record, committed verbatim below this header (Braided pilot, lane-rules §14).
+# Source: relay-kit-private kate-replies:replies/HO-CRK-20261117-CFKR--1dcba235d660.md
+# Written by API Kate (gpt-6.1-sol) 2026-11-17T21:36:33Z. Do not edit; a change is a new @version from her.
+id: CRK-R-codex-hook-trust@1
+authored_by: chatgpt:kate
+author_role: independent
+claim_label: opinion
+source_reference: "handoffs/outputs/HO-CRK-20261117-CFKR.md — Round 2, item 1"
+target_revision: "64d0f6e"
+requirement: >-
+  When reconciling Codex hook trust, crank-mem must grant trust only
+  to commands matching an explicitly supported exact generated form
+  and remove any crank-mem-managed trust entry for a command that
+  no longer matches.
+test_behavior:
+  - >-
+    Exact supported generated commands receive the expected trust
+    entry, and repeated reconciliation is idempotent.
+  - >-
+    A command containing the expected hook path but with appended
+    shell receives no trust.
+  - >-
+    A pre-existing crank-mem-managed trust entry for that edited
+    command is removed during reconciliation.
+  - >-
+    Unrelated user-managed trust entries remain unchanged.
+out_of_scope:
+  - Authenticating command provenance or hook-file contents.
+  - Changing Codex's own trust enforcement.
+  - Revoking unrelated user-managed trust.

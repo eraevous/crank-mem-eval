@@ -1,0 +1,26 @@
+# Requirement record, committed verbatim below this header (Braided pilot, lane-rules §14).
+# Source: relay-kit-private kate-replies:replies/HO-CRK-20261117-CFKR--1dcba235d660.md
+# Written by API Kate (gpt-6.1-sol) 2026-11-17T21:36:33Z. Do not edit; a change is a new @version from her.
+id: CRK-R-launcher-dotenv-isolation@1
+authored_by: chatgpt:kate
+author_role: independent
+claim_label: opinion
+source_reference: "handoffs/outputs/HO-CRK-20261117-CFKR.md — Round 2, item 3"
+target_revision: "935ca02"
+requirement: >-
+  The crank-mem launcher must invoke Bun with automatic working-directory
+  dotenv loading disabled so those files cannot supply crank-mem settings,
+  including the release origin.
+test_behavior:
+  - >-
+    Execute the actual launcher from a directory containing
+    Bun-recognized dotenv files that set a hostile release-origin value,
+    and observe that the effective release origin remains the expected
+    value from the controlled baseline environment.
+  - >-
+    Observe that an additional dotenv-only sentinel is absent from the
+    launched crank-mem process environment.
+out_of_scope:
+  - Rejecting settings explicitly supplied through the inherited environment.
+  - Direct Bun invocations that bypass the launcher.
+  - Release authenticity or download verification.

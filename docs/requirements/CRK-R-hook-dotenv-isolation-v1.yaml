@@ -1,0 +1,28 @@
+# Requirement record, committed verbatim below this header (Braided pilot, lane-rules §14).
+# Source: relay-kit-private kate-replies:replies/HO-CRK-20261117-CFKR--1dcba235d660.md
+# Written by API Kate (gpt-6.1-sol) 2026-11-17T21:36:33Z. Do not edit; a change is a new @version from her.
+id: CRK-R-hook-dotenv-isolation@1
+authored_by: chatgpt:kate
+author_role: independent
+claim_label: opinion
+source_reference: "handoffs/outputs/HO-CRK-20261117-CFKR.md — Round 2, item 2"
+target_revision: "e7bd4fc"
+requirement: >-
+  Generated or refreshed hook commands must invoke Bun with automatic
+  project-local dotenv loading disabled, and any daemon started through
+  those hooks must preserve that isolation across its startup boundary.
+test_behavior:
+  - >-
+    Execute the generated hook from a project containing hostile
+    Bun-recognized dotenv files and observe that their sentinel values
+    are absent from the hook environment.
+  - >-
+    Start a fresh daemon through the hook and observe that project-local
+    dotenv sentinel values are absent from the daemon environment too.
+  - >-
+    Refresh previously generated wiring lacking isolation and show that
+    the resulting hook execution satisfies the same checks.
+out_of_scope:
+  - Sanitizing variables explicitly inherited from the invoking process.
+  - Independent daemon startup paths not invoked through these hooks.
+  - Altering an already-running daemon's environment.
