@@ -3,7 +3,9 @@
 name: ci
 on:
   push:
-    branches: [main]
+    # crk/** too: a PR whose branch conflicts with main (as the v0.16 rebase does) gets no
+    # pull_request run, since GitHub can't build its merge commit.
+    branches: [main, "crk/**"]
   pull_request:
 permissions:
   contents: read
