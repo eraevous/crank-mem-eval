@@ -41,10 +41,12 @@ const PEM =
 // and prefix separators may repeat (`APP__SECRET`, `foo--password`).
 const KEYED_VALUES: RegExp[] = [
   /(?=[a-z0-9])(?<![a-z0-9_]-*)((?:[a-z0-9]+[_-]+)*(?:password|passwd|pwd|secret|api_key|apikey|api-key|access_token|auth_token|token|aws_secret_access_key|aws_session_token)(?:[_-]key)?\b\\?["']?\s*[:=]\s*\\?["']?)([^\s"'\\,;]+)/gi,
-  // A URL scheme is at most 32 characters here (real ones are short), so a start inside a long
-  // run of scheme characters gives up after 32 rather than scanning to the run's end. Added in
-  // our line, with the anchor above.
-  /\b([a-z][a-z0-9+.-]{0,31}:\/\/[^\s:/@]+:)([^\s@/]+)(?=@)/gi,
+  // Added in our line, with the anchor above: the URL pattern is tried only where `://` follows,
+  // and the scheme is checked behind that point, so a long run of scheme characters is read once
+  // rather than once per start inside it. It masks exactly what v0.16's
+  // `\b[a-z][a-z0-9+.-]*://` form masked, schemes of any length included; group 1 now holds
+  // `://user:` instead of `scheme://user:`, which `$1` puts back unchanged.
+  /(?=:\/\/)(?<=\b[a-z][a-z0-9+.-]*)(:\/\/[^\s:/@]+:)([^\s@/]+)(?=@)/gi,
   /\b(authorization\s*:\s*(?:(?:bearer|basic|token|digest)\s+)?)([^\s"'\\,;]+)/gi,
 ];
 

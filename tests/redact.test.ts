@@ -107,6 +107,9 @@ const KEYED_ROWS: [string, string][] = [
   ["DJANGO_SECRET_KEY=abc", "DJANGO_SECRET_KEY=[redacted]"],
   ["svn+ssh://me:pw1@host/repo", "svn+ssh://me:[redacted]@host/repo"],
   ["see-https://me:pw1@host", "see-https://me:[redacted]@host"],
+  // v0.16 masks credentials after a scheme of any length; a 33-character one still masks here.
+  ["z".repeat(33) + "://me:pw1@host", "z".repeat(33) + "://me:[redacted]@host"],
+  ["1.5x-https://me:pw1@host", "1.5x-https://me:[redacted]@host"],
 ];
 
 describe("redact keyed values", () => {
@@ -160,6 +163,21 @@ describe("redact stays linear on long hyphenated runs", () => {
       expect(performance.now() - started).toBeLessThan(300);
     },
   );
+
+  // CRK-REQ-005 asks for growing inputs, each pattern on its own: keyed values (`=x`) and URL
+  // credentials (`://u:p@h`). v0.16 took about 4.8 s at 80,000 repeats for the URL form alone, so
+  // a quadratic scan at 160,000 would run for many seconds; a linear one stays far under 300 ms.
+  test.each([
+    ["keyed", "=x", "=x"],
+    ["url", "://u:p@h", "://u:[redacted]@h"],
+  ])("%s pattern at growing sizes", (_name, tail, masked) => {
+    for (const n of [10_000, 40_000, 160_000]) {
+      const run = "a-".repeat(n);
+      const started = performance.now();
+      expect(redact(run + tail)).toBe(run + masked);
+      expect(performance.now() - started).toBeLessThan(300);
+    }
+  });
 });
 
 describe("redaction has no switch", () => {
