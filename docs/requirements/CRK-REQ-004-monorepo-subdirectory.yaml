@@ -1,0 +1,52 @@
+# Requirement record, committed verbatim below this header (Braided pilot, lane-rules §14).
+# Source: relay-kit-private kate-replies:replies/HO-CRK-20261117-CFKR--9114f3d59ed5.md
+# Written by API Kate (gpt-6.1-sol) 2026-11-18T01:36:09Z. Do not edit; a change is a new version from her.
+id: CRK-REQ-004-monorepo-subdirectory
+authored_by: chatgpt:kate
+author_role: independent
+claim_label: opinion
+source_reference:
+  - "handoffs/outputs/HO-CRK-20261117-CFKR.md: Round 3 For Kate, item 4"
+  - "PR #15, commit 312d222; reported tests/monorepo.test.ts evidence"
+target_revision: "312d222"
+requirement: >-
+  When Git discovery and the relevant Git operations succeed, a crank-mem
+  project rooted in a subdirectory of a Git repository must be treated as
+  inside that repository even if the project root has no .git entry.
+  File listing must apply the enclosing repository's ignore rules and
+  return only files within the project's subtree. Churn must count only
+  committed changes within that subtree and represent their paths relative
+  to the project root. In exclude mode, which is the default, initialization
+  must add .crank/ to the enclosing repository's info/exclude, using Git to
+  resolve that location, including for worktrees and submodules.
+  Uninstall must remove the exclusion entry installed by crank-mem.
+  Outside any repository, exclude-mode initialization must warn that it
+  has installed no Git exclusion protecting .crank/.
+test_behavior:
+  - >-
+    Initialize from packages/app without a local .git entry. Confirm the
+    enclosing repository's Git-resolved info/exclude contains .crank/,
+    and git status reports nothing under packages/app/.crank/.
+    Uninstall and confirm the installed exclusion entry is removed.
+  - >-
+    Confirm a file ignored by the enclosing repository's .gitignore
+    is absent from crank-mem anatomy, and listing does not include
+    files outside packages/app.
+  - >-
+    After commits touching packages/app/src/hot.ts and
+    packages/other/busy.ts, confirm the session-start hook stores
+    churn exactly as ["src/hot.ts"].
+  - >-
+    Confirm exclude-mode initialization outside any repository emits
+    the missing-Git-exclusion warning.
+  - >-
+    Cover worktree and submodule fixtures to confirm exclusion paths
+    are resolved by Git rather than constructed from project/.git.
+out_of_scope:
+  - >-
+    Changing the fallback policy when Git discovery or listing fails,
+    including restoring the old fail-closed behavior. Any such change
+    requires a separate proposed requirement for Zach to decide.
+  - >-
+    Treating .crank/ exclusion as a confidentiality guarantee or changing
+    unrelated file-confinement behavior.
