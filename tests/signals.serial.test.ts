@@ -1,5 +1,6 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
@@ -15,6 +16,7 @@ import {
   waitFor,
 } from "./helpers.ts";
 import { claudeSessionEnd, claudeStop } from "./fixtures/payloads.ts";
+import { crankHooks } from "../src/cli/settings.ts";
 
 const STOP = "src/hooks/stop.ts";
 const SESSION_END = "src/hooks/session-end.ts";
@@ -65,6 +67,55 @@ function sleepMs(ms: number): Promise<void> {
 }
 
 describe("hook-started daemon (black-box)", () => {
+  // Added in our line (see ATTRIBUTION.md; CRK-R-hook-dotenv-isolation@1, Kate's second test):
+  // a daemon started through the wired Stop command sees none of the project's .env files.
+  // A fake clone's launcher dumps the environment the daemon would start with.
+  test("a daemon the wired Stop hook starts inherits nothing from the project's .env files", async () => {
+    const clone = fs.mkdtempSync(path.join(os.tmpdir(), "crank-fakeclone-"));
+    const dump = path.join(clone, "env.txt");
+    fs.mkdirSync(path.join(clone, "bin"));
+    fs.writeFileSync(path.join(clone, "bin/crank-mem"), `#!/bin/sh\nenv > '${dump}'\n`, {
+      mode: 0o755,
+    });
+    const root = digestProject({ clone_root: clone });
+    fs.cpSync(path.join(REPO_ROOT, "src/hooks"), path.join(root, ".crank/hooks"), {
+      recursive: true,
+    });
+    for (const name of [".env", ".env.local", ".env.production"])
+      fs.writeFileSync(
+        path.join(root, name),
+        `CRANK_PROBE_${name.replace(/\W/g, "_")}=leaked\nCRANK_RELEASE_URL=http://127.0.0.1:9/hostile\n`,
+      );
+    const { env } = daemonEnv();
+    const command = crankHooks("bun", "claude").Stop![0]!.hooks[0]!.command;
+    const run = spawnSync("sh", ["-c", command], {
+      cwd: root,
+      input: JSON.stringify({ ...claudeStop(root), transcript_path: TRANSCRIPT }),
+      encoding: "utf-8",
+      timeout: 15_000,
+      // helpers.ts sets CRANK_RELEASE_URL for every child; this child must start without it.
+      env: Object.fromEntries(
+        Object.entries({
+          ...process.env,
+          ...env,
+          CLAUDE_PROJECT_DIR: root,
+          NODE_ENV: "production",
+        }).filter(([k]) => k !== "CRANK_RELEASE_URL"),
+      ) as Record<string, string>,
+    });
+    expect(run.status).toBe(0);
+    await waitFor(() => fs.existsSync(dump) && fs.readFileSync(dump, "utf-8").length > 0, 10_000);
+    // Compare names only, so a failure never prints the environment.
+    const names = fs
+      .readFileSync(dump, "utf-8")
+      .split("\n")
+      .map((line) => line.split("=")[0]!);
+    expect(names).toContain("CRANK_HOME");
+    expect(names.filter((n) => n.startsWith("CRANK_PROBE_") || n === "CRANK_RELEASE_URL")).toEqual(
+      [],
+    );
+  }, 20_000);
+
   test("a SessionEnd replaces a daemon whose heartbeat is older than 90 s", async () => {
     const root = digestProject({ clone_root: REPO_ROOT });
     const { home, env } = daemonEnv();
