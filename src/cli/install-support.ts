@@ -1,5 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { spawnSync } from "node:child_process";
+import { insideGitRepo } from "../hooks/lib/activity.ts";
 import { CRANK_HOOK_MARKER } from "./settings.ts";
 import { backupFile, createdByCrank } from "./backups.ts";
 import type { OpenedProject } from "./project.ts";
@@ -28,7 +30,7 @@ export function installPaths(root: string): {
     codexHooks: path.join(root, ".codex", "hooks.json"),
     codexConfig: path.join(root, ".codex", "config.toml"),
     gitignore: path.join(root, ".gitignore"),
-    gitExclude: path.join(root, ".git", "info", "exclude"),
+    gitExclude: gitExcludeFile(root) ?? path.join(root, ".git", "info", "exclude"),
   };
 }
 
@@ -43,12 +45,37 @@ export function claudeSettingsFiles(
     : { wired: claudeLocal, other: claudeShared };
 }
 
-/** The file that holds a git mode's ignore block, or null: commit mode has none, and exclude mode needs a .git directory. */
+/** The file that holds a git mode's ignore block, or null: commit mode has none, and exclude mode needs an enclosing repository. */
 export function modeIgnoreFile(root: string, git: CrankConfig["git"]): string | null {
-  const { gitignore, gitExclude } = installPaths(root);
-  if (git === "ignore") return gitignore;
-  if (git === "exclude" && fs.existsSync(path.join(root, ".git"))) return gitExclude;
+  if (git === "ignore") return installPaths(root).gitignore;
+  if (git === "exclude") return gitExcludeFile(root);
   return null;
+}
+
+/**
+ * The info/exclude file of the repository holding `root`, or null outside any repository.
+ *
+ * Added in our line (see ATTRIBUTION.md): requiring `.git` in `root` itself made exclude mode,
+ * the default, write nothing for a project in a monorepo subdirectory, leaving `.crank/`
+ * committable in the enclosing repository. The ignore line `.crank/` is unanchored, so the
+ * enclosing repository's exclude file covers a project at any depth. A `.git` file (worktree or
+ * submodule) is resolved by git itself.
+ */
+function gitExcludeFile(root: string): string | null {
+  const dotGit = path.join(root, ".git");
+  try {
+    if (fs.statSync(dotGit).isDirectory()) return path.join(dotGit, "info", "exclude");
+  } catch {
+    // No .git here: ask git about an enclosing repository below.
+  }
+  if (!insideGitRepo(root)) return null;
+  const r = spawnSync("git", ["rev-parse", "--git-path", "info/exclude"], {
+    cwd: root,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  const out = r.status === 0 ? r.stdout.trim() : "";
+  return out ? path.resolve(root, out) : null;
 }
 
 export interface InstallContext {

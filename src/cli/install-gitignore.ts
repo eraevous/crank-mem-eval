@@ -67,10 +67,16 @@ function ensureGitIgnoreState(ctx: InstallContext, r: Report): string | null {
   return ignoreFile !== null && addIgnoreLines(ignoreFile, backup) ? ignoreFile : null;
 }
 
+/** Exclude mode outside any git repository has nothing to write to; say so instead of staying silent. */
+const EXCLUDE_NO_REPO =
+  "crank-mem: warning: git mode is exclude, but this project is not inside a git repository, so nothing keeps .crank/ out of git if one is created later.";
+
 export const gitIgnoreState: InstallItem = {
   apply(ctx) {
     const r = report();
     ensureGitIgnoreState(ctx, r);
+    if (ctx.config.git === "exclude" && modeIgnoreFile(ctx.root, "exclude") === null)
+      r.warnings.push(EXCLUDE_NO_REPO);
     return r;
   },
   repair(ctx) {
