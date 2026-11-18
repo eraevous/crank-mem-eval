@@ -74,9 +74,15 @@ describe("hook-started daemon (black-box)", () => {
     const clone = fs.mkdtempSync(path.join(os.tmpdir(), "crank-fakeclone-"));
     const dump = path.join(clone, "env.txt");
     fs.mkdirSync(path.join(clone, "bin"));
-    fs.writeFileSync(path.join(clone, "bin/crank-mem"), `#!/bin/sh\nenv > '${dump}'\n`, {
-      mode: 0o755,
-    });
+    // Written aside, then renamed: the test polls the file, and a large environment (CI) would
+    // otherwise be read half-written.
+    fs.writeFileSync(
+      path.join(clone, "bin/crank-mem"),
+      `#!/bin/sh\nenv > '${dump}.part' && mv '${dump}.part' '${dump}'\n`,
+      {
+        mode: 0o755,
+      },
+    );
     const root = digestProject({ clone_root: clone });
     fs.cpSync(path.join(REPO_ROOT, "src/hooks"), path.join(root, ".crank/hooks"), {
       recursive: true,
