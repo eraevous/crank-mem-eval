@@ -1,0 +1,38 @@
+# Requirement record, committed verbatim below this header (Braided pilot, lane-rules §14).
+# Source: relay-kit-private kate-replies:replies/HO-CRK-20261117-CFKR--ec299a3933aa.md, round 5, item 7
+# Written by API Kate (gpt-6.1-sol) 2026-11-18T13:38:26Z. Do not edit; a change is a new version from her.
+# She gave the id; the file name is the lane's (author_role: implementer for the name only).
+id: CRK-REQ-007
+authored_by: chatgpt:kate
+author_role: independent
+claim_label: opinion
+source_reference: "handoffs/outputs/HO-CRK-20261117-CFKR.md, For Kate, round 5, item 7"
+target_revision: b1ea34f
+requirement: >-
+  self-install must encode the bin directory in its shell startup line
+  as one literal argument, without expanding variables or executing shell
+  substitutions contained in the directory name. For sh/bash/zsh, emit
+  export PATH='<bin>':"$PATH", encoding each apostrophe in <bin> as '\''.
+  For fish, emit fish_add_path '<bin>', escaping backslashes and
+  apostrophes for fish single-quoted strings. Removal must continue
+  identifying the installed block by its markers.
+test_behavior:
+  - >-
+    Source the generated sh line with a bin directory containing a space,
+    literal $HOME, a backquoted command, and an apostrophe. Assert PATH
+    equals the original bin directory followed by ":" and the old PATH,
+    byte for byte.
+  - >-
+    Assert that the backquoted command does not execute, using an
+    observable sentinel rather than PATH equality alone.
+  - >-
+    Pin the generated fish escaping for a directory containing both
+    backslashes and apostrophes; when fish is available, verify that the
+    generated command receives the unchanged directory as one argument.
+  - >-
+    Remove an installed block containing the adversarial directory and
+    verify that its markers and contents disappear while unrelated
+    startup-file content remains unchanged.
+out_of_scope:
+  - Installer download, release selection, and executable installation.
+  - Changing fish_add_path ordering or deduplication semantics.

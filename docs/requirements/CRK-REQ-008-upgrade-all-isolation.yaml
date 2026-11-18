@@ -1,0 +1,30 @@
+# Requirement record, committed verbatim below this header (Braided pilot, lane-rules §14).
+# Source: relay-kit-private kate-replies:replies/HO-CRK-20261117-CFKR--ec299a3933aa.md, round 5, item 8
+# Written by API Kate (gpt-6.1-sol) 2026-11-18T13:38:26Z. Do not edit; a change is a new version from her.
+# She gave the id; the file name is the lane's (author_role: implementer for the name only).
+id: CRK-REQ-008
+authored_by: chatgpt:kate
+author_role: independent
+claim_label: opinion
+source_reference: "handoffs/outputs/HO-CRK-20261117-CFKR.md, For Kate, round 5, item 8"
+target_revision: 6ab0bbb
+requirement: >-
+  crank-mem upgrade --all must attempt repair of every registered
+  project even when another project's repair throws. Each throwing
+  project must be reported on stderr as "<root>: failed (<reason>)".
+  If any project repair fails, the command must exit with status 1.
+test_behavior:
+  - >-
+    Register at least two projects in a deterministic order. Make the
+    earlier project's repair throw, for example by making config.json
+    a directory, and leave a later project needing an observable repair.
+  - >-
+    Invoke upgrade --all; assert that stderr identifies the throwing
+    project's root and failure reason in the required format.
+  - >-
+    Assert that the later project's repair completed despite the earlier
+    exception, and that the process exits with status 1.
+out_of_scope:
+  - Rolling back repairs already completed in other projects.
+  - Guaranteeing successful repair of the project that throws.
+  - Continuing after process termination or registry enumeration failure.
