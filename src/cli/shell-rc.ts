@@ -38,12 +38,12 @@ export function rcTarget(
 // `$` and backquotes in it are never split or expanded when the startup file runs.
 
 /** `s` as one POSIX shell word with no expansion: single quotes, each `'` written as `'\''`. */
-export function posixQuote(s: string): string {
+function posixQuote(s: string): string {
   return `'${s.replaceAll("'", `'\\''`)}'`;
 }
 
 /** `s` as one fish word with no expansion: single quotes, with `\` and `'` backslash-escaped. */
-export function fishQuote(s: string): string {
+function fishQuote(s: string): string {
   return `'${s.replace(/[\\']/g, "\\$&")}'`;
 }
 
