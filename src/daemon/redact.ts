@@ -34,9 +34,17 @@ const PEM =
 
 // Each keeps group 1 (the key and its punctuation) and masks group 2 (the value).
 // A value runs to the next whitespace, quote, backslash, comma or semicolon.
+// Added in our line (see ATTRIBUTION.md): the first pattern starts only where a name starts,
+// not at every `-` inside one (`(?=[a-z0-9])` plus a lookbehind that refuses a start after a
+// name character and any hyphens), so a long hyphenated run is scanned once rather than once
+// per hyphen. Leading hyphens still start a name, as a command-line flag does (`--password=`),
+// and prefix separators may repeat (`APP__SECRET`, `foo--password`).
 const KEYED_VALUES: RegExp[] = [
-  /\b((?:[a-z0-9]+[_-])*(?:password|passwd|pwd|secret|api_key|apikey|api-key|access_token|auth_token|token|aws_secret_access_key|aws_session_token)(?:[_-]key)?\b\\?["']?\s*[:=]\s*\\?["']?)([^\s"'\\,;]+)/gi,
-  /\b([a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:)([^\s@/]+)(?=@)/gi,
+  /(?=[a-z0-9])(?<![a-z0-9_]-*)((?:[a-z0-9]+[_-]+)*(?:password|passwd|pwd|secret|api_key|apikey|api-key|access_token|auth_token|token|aws_secret_access_key|aws_session_token)(?:[_-]key)?\b\\?["']?\s*[:=]\s*\\?["']?)([^\s"'\\,;]+)/gi,
+  // A URL scheme is at most 32 characters here (real ones are short), so a start inside a long
+  // run of scheme characters gives up after 32 rather than scanning to the run's end. Added in
+  // our line, with the anchor above.
+  /\b([a-z][a-z0-9+.-]{0,31}:\/\/[^\s:/@]+:)([^\s@/]+)(?=@)/gi,
   /\b(authorization\s*:\s*(?:(?:bearer|basic|token|digest)\s+)?)([^\s"'\\,;]+)/gi,
 ];
 

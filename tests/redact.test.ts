@@ -95,6 +95,18 @@ const KEYED_ROWS: [string, string][] = [
   ["x-api-key: abc123", "x-api-key: [redacted]"],
   ["MY_APP_SECRET=v4lue", "MY_APP_SECRET=[redacted]"],
   ["SLACK_BOT_TOKEN=v4lue", "SLACK_BOT_TOKEN=[redacted]"],
+  // Added in our line (see ATTRIBUTION.md): command-line flags and repeated separators.
+  ["mysql --password=hunter2", "mysql --password=[redacted]"],
+  ["curl --api-key=abc123", "curl --api-key=[redacted]"],
+  ["gh --token=abc123", "gh --token=[redacted]"],
+  ["tool -token=abc123", "tool -token=[redacted]"],
+  ["cli --db-password=hunter2", "cli --db-password=[redacted]"],
+  ["foo--password=hunter2", "foo--password=[redacted]"],
+  ["APP__SECRET=abc", "APP__SECRET=[redacted]"],
+  ['{"stripe-api-key": "abc"}', '{"stripe-api-key": "[redacted]"}'],
+  ["DJANGO_SECRET_KEY=abc", "DJANGO_SECRET_KEY=[redacted]"],
+  ["svn+ssh://me:pw1@host/repo", "svn+ssh://me:[redacted]@host/repo"],
+  ["see-https://me:pw1@host", "see-https://me:[redacted]@host"],
 ];
 
 describe("redact keyed values", () => {
@@ -119,6 +131,9 @@ describe("redact leaves near-misses alone", () => {
     "refresh_token_ttl=30",
     "input_tokens=12",
     "token-limit: 5",
+    "MAX_TOKENS=4096",
+    "PASSWORD_MIN_LENGTH=12",
+    "SECRET_ROTATION_DAYS: 30",
     "",
   ])("%j", (input) => {
     expect(redact(input)).toBe(input);
@@ -131,6 +146,20 @@ describe("redact leaves near-misses alone", () => {
     const once = redact(input);
     expect(redact(once)).toBe(once);
   });
+});
+
+// Added in our line (see ATTRIBUTION.md): a name-start anchor keeps the keyed-value scan linear.
+// v0.16's pattern retried the prefix loop at every `-` in a long hyphenated run (about 1.8 s
+// for 80,000 characters under bun); the bound below is far above linear time and far below that.
+describe("redact stays linear on long hyphenated runs", () => {
+  test.each([["a-".repeat(40_000)], ["a-".repeat(40_000) + "=x"], ["x--".repeat(26_000)]])(
+    "%#",
+    (input) => {
+      const started = performance.now();
+      expect(redact(input)).toBe(input);
+      expect(performance.now() - started).toBeLessThan(300);
+    },
+  );
 });
 
 describe("redaction has no switch", () => {
