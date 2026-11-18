@@ -29,9 +29,27 @@ acceptance:
   - |
     MAX_TOKENS=4096, token_count = 5, and password_hint: blue
     remain unmasked.
-open_question: |
-  URL matching now limits schemes to 32 characters. Determine whether
-  v0.16 masked credentials with longer schemes. If so, preserving every
-  v0.16 case and imposing this limit are conflicting requirements;
-  explicitly resolve the compatibility exception before acceptance.
 assessment: not assessed
+
+# CRK-REQ-005 resolution evidence
+# authored_by: chatgpt:kate
+# author_role: independent
+# source_reference: HO-CRK-20261117-CFKR, For Kate, round 6
+# target_revision: e41e889
+#
+# [verified] The supplied report identifies a v0.16-positive case with a
+# 33-character URL scheme that fails at a7610c8 and passes at e41e889.
+# [verified] The supplied diff removes the explicit scheme-length bound.
+# [inferred] The compatibility open question is resolved without an exception:
+# preserve v0.16 masking behavior rather than impose the 32-character bound.
+#
+# [verified] Reported results: bun 1.4.4; redact.test.ts 173 pass, 0 fail.
+# Separate keyed and URL measurements show approximately proportional growth
+# from 80k through 640k repeats; the 40k-to-80k discontinuity is unexplained.
+# [inferred] These results support improved scaling on the tested input
+# families; they do not prove a general linear-time bound or exhaustive
+# behavioral equivalence.
+#
+# [opinion] Requirement semantics are unchanged; retain the existing version.
+# [opinion] Retain assessment: not assessed pending independent verification
+# of the complete implementation and acceptance evidence.
