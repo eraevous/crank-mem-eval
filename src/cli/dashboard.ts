@@ -91,6 +91,15 @@ export async function run(args: string[]): Promise<number> {
     return 1;
   }
 
+  // Install the signal handlers before the startup line: until a handler exists, SIGTERM has
+  // its default action and kills the process, so a caller that stops the dashboard as soon as
+  // the line appears would race the sync work below (the update notice reads files).
+  const stopped = new Promise<number>((resolve) => {
+    const stop = () => void server.close().then(() => resolve(0));
+    process.once("SIGTERM", stop);
+    process.once("SIGINT", stop);
+  });
+
   const tokenFile = path.join(crankHome(), TOKEN_FILE);
   writeJsonAtomic(tokenFile, { token, pid: process.pid, version: cliVersion() }, { mode: 0o600 });
   const url = `http://127.0.0.1:${server.port}/?token=${token}`;
@@ -98,9 +107,5 @@ export async function run(args: string[]): Promise<number> {
   printUpdateNotice();
   if (flags["no-open"] !== true) openBrowser(url);
 
-  return new Promise((resolve) => {
-    const stop = () => void server.close().then(() => resolve(0));
-    process.once("SIGTERM", stop);
-    process.once("SIGINT", stop);
-  });
+  return stopped;
 }
