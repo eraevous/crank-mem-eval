@@ -1,0 +1,68 @@
+# Requirement record, committed verbatim below this header (Braided pilot, lane-rules §14).
+# Source: relay-kit-private kate-replies:replies/HO-CRK-20261117-CFKR--925fd2481117.md, round 7
+# Written by API Kate (gpt-6.1-sol) 2026-11-19T13:37:23Z. Do not edit; a change is a new version from her.
+# She gave the id; the file name is the lane's (author_role: implementer for the name only).
+id: REQ-CRK-FILEFACTS-CONFINEMENT
+authored_by: chatgpt:kate
+author_role: independent
+source_reference: "handoffs/outputs/HO-CRK-20261117-CFKR.md#For Kate (Round 7)"
+target_revision: b88d3ac
+
+verdict:
+  label: opinion
+  text: "The four described tests cover key symlink cases, but not the full requirement."
+verification:
+  label: verified
+  text: "The supplied text reports red/green results; test code, execution evidence, and the implementation diff were not supplied."
+implementation_assessment:
+  label: inferred
+  text: "Not assessed; the diff and test evidence are needed."
+
+requirement:
+  label: verified
+  text: >-
+    For both post-write and refreshGraph callers, fileFacts(root, rel, config)
+    must return null without storing file facts on any refusal, including
+    resolution or I/O failure, a fully resolved path outside the fully resolved
+    project root, a requested or resolved basename rejected by isSensitiveFile,
+    or a non-regular or oversized file; otherwise it must read through one
+    descriptor opened with O_NOFOLLOW on the resolved path and store the
+    description, size, and token count under the requested project-relative
+    path, preserving indexing of in-project links to eligible in-project files.
+
+test_must_show:
+  label: opinion
+  cases:
+    - "An outside-file symlink and an outside-directory ancestor symlink produce no files row or canary text."
+    - "A non-sensitive requested basename resolving to a sensitive basename produces no files row or canary text."
+    - "A sensitive requested basename resolving to an ordinary basename is also refused."
+    - "An eligible in-project symlink is indexed under the link path with target-derived description, size, and token count."
+    - "A symlinked project root is compared using its real path."
+    - "Non-regular files, oversized files, and resolution/open/read failures return null without storing facts or throwing."
+    - "The same contract holds through post-write and refreshGraph."
+  mechanism:
+    - "Code inspection or instrumented tests establish one-descriptor reading and O_NOFOLLOW on the resolved path; database assertions alone cannot establish these."
+
+four_test_assessment:
+  label: inferred
+  covered_as_described:
+    - "Outside final-component symlink refusal."
+    - "Outside ancestor-directory symlink refusal."
+    - "Resolved-sensitive-basename refusal."
+    - "Allowed in-project symlink with target heading."
+  missing:
+    - "Requested-sensitive-basename refusal."
+    - "Assertion that the allowed link is stored under its requested path, with correct size and token count."
+    - "Real-root handling when the project root itself is a symlink."
+    - "Regular-file and size-limit enforcement."
+    - "Null/no-throw behavior on refusals and I/O failures."
+    - "refreshGraph coverage."
+    - "Descriptor and O_NOFOLLOW evidence."
+
+out_of_scope:
+  label: verified
+  items:
+    - "Name eligibility gates: isIndexableName runs first."
+    - "Concurrent rewriting of files inside the project between reads."
+    - "Tree walking, which separately skips links using lstat."
+    - "outline/unfold, which have their own real-path check in code.ts."
