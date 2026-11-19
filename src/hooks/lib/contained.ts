@@ -18,7 +18,8 @@ import { isSensitiveFile } from "./config.ts";
 //   2. Neither the requested basename nor the resolved basename is sensitive, so a link named
 //      `readme.md` pointing at `id_rsa` inside the project is refused too.
 //   3. What is read is a regular file within `maxBytes`, checked with fstat on the descriptor
-//      that is then read, opened with O_NOFOLLOW on the already-resolved path.
+//      that is then read, opened with O_NOFOLLOW and O_NONBLOCK on the already-resolved path
+//      (so a FIFO is refused instead of blocking the open).
 //
 // What it does not do
 //   It does not apply the index's name gates; `fileFacts` runs `isIndexableName` first. It does
@@ -62,7 +63,13 @@ export function readAdmitted(
   let fd: number;
   try {
     // O_NOFOLLOW: `real` is fully resolved, so a symlink here means the file was swapped.
-    fd = fs.openSync(real, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+    // O_NONBLOCK: a FIFO would otherwise block this open until a writer appears, hanging the
+    // hook; with it the open returns at once and fstat below refuses the non-regular file.
+    // It changes nothing for a regular file.
+    fd = fs.openSync(
+      real,
+      fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0),
+    );
   } catch {
     return null;
   }

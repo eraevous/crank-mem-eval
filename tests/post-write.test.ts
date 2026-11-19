@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -284,6 +285,93 @@ describe("post-write hook (black-box)", () => {
     const run = runHook(HOOK, JSON.stringify(claudePostWrite(root, path.join(root, "alias.md"))));
     expect(run.status).toBe(0);
     expect(graphFiles(root)["alias.md"]!.description).toBe("Inside heading");
+  });
+
+  // REQ-CRK-FILEFACTS-CONFINEMENT (Kate, round 7): the cases her record lists beyond the four above.
+
+  /** size and tokens for one path, which `graphFiles` leaves out. */
+  function sizeAndTokens(root: string, rel: string): { size: number; tokens: number } | undefined {
+    const opened = openCodeDb(root, "read");
+    expect(opened.status).toBe("open");
+    try {
+      return opened.db!.prepare("SELECT size, tokens FROM files WHERE path = ?").get(rel) as
+        | { size: number; tokens: number }
+        | undefined;
+    } finally {
+      opened.db!.close();
+    }
+  }
+
+  test("an indexed in-project link is stored under its own path with the target's size and tokens", () => {
+    const body = "# Inside heading\n\nSome words that count as tokens.\n";
+    const root = makeCrankProject({ "a.ts": "const a = 1;", "src/real.md": body });
+    seedIndex(root);
+    fs.symlinkSync(path.join(root, "src/real.md"), path.join(root, "alias.md"));
+    runHook(HOOK, JSON.stringify(claudePostWrite(root, path.join(root, "alias.md"))));
+    const viaLink = sizeAndTokens(root, "alias.md");
+    const direct = sizeAndTokens(root, "src/real.md");
+    expect(viaLink).toBeDefined();
+    expect(viaLink!.size).toBe(Buffer.byteLength(body));
+    expect(viaLink).toEqual(direct!);
+    expect(graphFiles(root)["src/real.md"]).toBeDefined();
+  });
+
+  test("a sensitive-named link to an ordinary in-project file is not indexed", () => {
+    const root = makeCrankProject({
+      "a.ts": "const a = 1;",
+      "src/real.md": "# SYNTHETIC-ORDINARY-CANARY\n",
+    });
+    seedIndex(root);
+    fs.symlinkSync(path.join(root, "src/real.md"), path.join(root, ".env"));
+    const run = runHook(HOOK, JSON.stringify(claudePostWrite(root, path.join(root, ".env"))));
+    expect(run.status).toBe(0);
+    expect(graphFiles(root)[".env"]).toBeUndefined();
+  });
+
+  test("a project reached through a symlinked root still indexes its own files", () => {
+    const real = makeCrankProject({ "a.ts": "const a = 1;" });
+    const link = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "crank-rootlink-")), "proj");
+    fs.symlinkSync(real, link, "dir");
+    seedIndex(link);
+    fs.writeFileSync(path.join(real, "fresh.md"), "# Through the root link\n");
+    const run = runHook(HOOK, JSON.stringify(claudePostWrite(link, path.join(link, "fresh.md"))));
+    expect(run.status).toBe(0);
+    expect(graphFiles(real)["fresh.md"]!.description).toBe("Through the root link");
+  });
+
+  test("a FIFO under an indexable name is refused without blocking the hook", () => {
+    const root = makeCrankProject({ "a.ts": "const a = 1;" });
+    seedIndex(root);
+    const fifo = path.join(root, "pipe.md");
+    // The tool name sits in a variable so knip does not ask for it as a package binary; it is a
+    // system tool, and the test returns early where it is missing.
+    const mkfifo = "mkfifo";
+    if (spawnSync(mkfifo, [fifo]).status !== 0) return;
+    const started = Date.now();
+    const run = runHook(HOOK, JSON.stringify(claudePostWrite(root, fifo)));
+    expect(run.status).toBe(0);
+    expect(Date.now() - started).toBeLessThan(10_000);
+    expect(graphFiles(root)["pipe.md"]).toBeUndefined();
+  });
+
+  test("session-start's refresh indexes neither outside links nor a link to a sensitive file", () => {
+    const outside = outsideDir();
+    const root = makeCrankProject({
+      "a.ts": "const a = 1;",
+      "keys/id_rsa": "SYNTHETIC-KEY-CANARY\n",
+    });
+    fs.symlinkSync(path.join(outside, "private.md"), path.join(root, "notes.md"));
+    fs.symlinkSync(outside, path.join(root, "linked"), "dir");
+    fs.symlinkSync(path.join(root, "keys/id_rsa"), path.join(root, "readme.md"));
+    seedIndex(root);
+    const files = graphFiles(root);
+    expect(files["a.ts"]).toBeDefined();
+    for (const rel of ["notes.md", "linked/private.md", "readme.md"]) {
+      expect(files[rel]).toBeUndefined();
+    }
+    const dump = JSON.stringify(files);
+    expect(dump).not.toContain("SYNTHETIC-OUTSIDE-CANARY");
+    expect(dump).not.toContain("SYNTHETIC-KEY-CANARY");
   });
 
   test("overwriting an indexed file past the size cap drops its entry", () => {
