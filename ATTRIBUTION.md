@@ -37,6 +37,8 @@ the full history.
 - `6ab0bbb`: `upgrade --all` reports a project whose repair throws and goes on with the rest.
 - `25f51de`, `404bba5`: a bun test workflow on pull requests, `main` and `crk/**` branches.
 - `31673a8`: a race fix in this copy's own signals test.
+- `b88d3ac`: file facts are read only for a path whose real path lies inside the project and
+  whose requested and resolved names are not sensitive (`src/hooks/lib/contained.ts`).
 - `docs/requirements/`: requirement records written by a reviewer (API Kate, OpenAI) under the
   Braided pilot, committed verbatim; each file names its source.
 - This file.
