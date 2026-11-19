@@ -354,6 +354,29 @@ describe("post-write hook (black-box)", () => {
     expect(graphFiles(root)["pipe.md"]).toBeUndefined();
   });
 
+  test("an unreadable file is refused by post-write and by session-start's refresh, without failing either", () => {
+    // Root reads a mode-000 file anyway, so the case cannot be built as root; CI runs as a
+    // regular user. The early return mirrors the FIFO test's for a missing mkfifo.
+    if (process.getuid?.() === 0) return;
+    const root = makeCrankProject({ "a.ts": "const a = 1;" });
+    seedIndex(root);
+    const locked = path.join(root, "locked.md");
+    fs.writeFileSync(locked, "# SYNTHETIC-LOCKED-CANARY\n");
+    fs.chmodSync(locked, 0o000);
+    try {
+      const run = runHook(HOOK, JSON.stringify(claudePostWrite(root, locked)));
+      expect(run.status).toBe(0);
+      expect(graphFiles(root)["locked.md"]).toBeUndefined();
+      seedIndex(root);
+      const files = graphFiles(root);
+      expect(files["a.ts"]).toBeDefined();
+      expect(files["locked.md"]).toBeUndefined();
+      expect(JSON.stringify(files)).not.toContain("SYNTHETIC-LOCKED-CANARY");
+    } finally {
+      fs.chmodSync(locked, 0o644);
+    }
+  });
+
   test("session-start's refresh indexes neither outside links nor a link to a sensitive file", () => {
     const outside = outsideDir();
     const root = makeCrankProject({
