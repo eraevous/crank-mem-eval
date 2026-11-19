@@ -1,0 +1,14 @@
+# Shared Kairos CI from eraevous/Lydian (DEC-204). Tests and policies live in Lydian; this file never changes when they do.
+name: kairos
+on:
+  push:
+    # crk/** too: a PR whose branch conflicts with main (as the v0.16 rebase does) gets no
+    # pull_request run; ci.yml does the same.
+    branches: [main, "crk/**"]
+  pull_request:
+jobs:
+  checks:
+    uses: eraevous/Lydian/.github/workflows/kairos-checks.yml@main
+    with:
+      suite: kairos-records-v1
+      kit_ref: main # keep equal to the @ref above
