@@ -6,6 +6,7 @@ import { isExcluded, type CrankConfig } from "./config.ts";
 import { BINARY_SNIFF_BYTES, isIndexableName, SOURCE_EXTENSIONS, toPosix } from "./indexable.ts";
 import { gitListing } from "./activity.ts";
 import { ownedBy } from "./owner.ts";
+import { readAdmitted } from "./contained.ts";
 
 // Project walk and per-file facts. Reads the filesystem and, in a git repo, `git ls-files`;
 // persistence is the caller's job.
@@ -20,28 +21,23 @@ export interface FileFacts {
 }
 
 /**
- * The one gate for a path's facts: name checks, one stat, size gate, read, NUL sniff, then the
+ * The one gate for a path's facts: name checks, the containment gate's stat and read, NUL sniff, then the
  * facts `code.db` keeps. Null on any rejection or I/O failure.
  */
 export function fileFacts(rootDir: string, relPath: string, config: CrankConfig): FileFacts | null {
   if (!isIndexableName(relPath, config)) return null;
   const absPath = path.join(rootDir, relPath);
-  let stat: fs.Stats;
-  let buf: Buffer;
-  try {
-    stat = fs.statSync(absPath);
-    if (stat.size > config.max_file_size_bytes) return null;
-    buf = fs.readFileSync(absPath);
-  } catch {
-    return null;
-  }
+  // Real-path containment and the sensitive check on both names (contained.ts).
+  const read = readAdmitted(rootDir, relPath, config.max_file_size_bytes);
+  if (read === null) return null;
+  const { buf, stat } = read;
   if (buf.subarray(0, BINARY_SNIFF_BYTES).includes(0)) return null;
   const content = buf.toString("utf-8");
   return {
     size: stat.size,
     mtimeMs: stat.mtimeMs,
     tokens: estimateTokens(content, absPath),
-    description: describeFile(absPath),
+    description: describeFile(read.real),
     generated: isGenerated(content),
   };
 }

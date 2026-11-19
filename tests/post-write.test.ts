@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import {
   REPO_ROOT,
@@ -218,6 +219,71 @@ describe("post-write hook (black-box)", () => {
     const run = runHook(HOOK, JSON.stringify(payload));
     expect(run.status).toBe(0);
     expect(graphFiles(root)["sub/dir/fresh.ts"]!.description).toBe("Fresh in subdir.");
+  });
+
+  // ── Containment (our 3aeb6e0, rebuilt on v0.16; see ATTRIBUTION.md) ──────────────────
+  // A write to a path inside the project by name that resolves outside it, or to a sensitive
+  // file under a harmless name, must not put the target's description or size into code.db.
+
+  /** A temp dir beside the project, holding a file whose first line is a recognisable canary. */
+  function outsideDir(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "crank-outside-"));
+    fs.writeFileSync(path.join(dir, "private.md"), "# SYNTHETIC-OUTSIDE-CANARY\nbody\n");
+    return dir;
+  }
+
+  test("a symlinked file pointing outside the project is not indexed", () => {
+    const root = makeCrankProject({ "a.ts": "const a = 1;" });
+    seedIndex(root);
+    const outside = outsideDir();
+    fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+    fs.symlinkSync(path.join(outside, "private.md"), path.join(root, "docs/notes.md"));
+    const run = runHook(
+      HOOK,
+      JSON.stringify(claudePostWrite(root, path.join(root, "docs/notes.md"))),
+    );
+    expect(run.status).toBe(0);
+    const files = graphFiles(root);
+    expect(files["docs/notes.md"]).toBeUndefined();
+    expect(JSON.stringify(files)).not.toContain("SYNTHETIC-OUTSIDE-CANARY");
+  });
+
+  test("a file reached through a symlinked directory outside the project is not indexed", () => {
+    const root = makeCrankProject({ "a.ts": "const a = 1;" });
+    seedIndex(root);
+    const outside = outsideDir();
+    fs.symlinkSync(outside, path.join(root, "linked"), "dir");
+    const run = runHook(
+      HOOK,
+      JSON.stringify(claudePostWrite(root, path.join(root, "linked/private.md"))),
+    );
+    expect(run.status).toBe(0);
+    const files = graphFiles(root);
+    expect(files["linked/private.md"]).toBeUndefined();
+    expect(JSON.stringify(files)).not.toContain("SYNTHETIC-OUTSIDE-CANARY");
+  });
+
+  test("a harmless-named link to a sensitive file inside the project is not indexed", () => {
+    const root = makeCrankProject({
+      "a.ts": "const a = 1;",
+      "keys/id_rsa": "SYNTHETIC-KEY-CANARY\n",
+    });
+    seedIndex(root);
+    fs.symlinkSync(path.join(root, "keys/id_rsa"), path.join(root, "readme.md"));
+    const run = runHook(HOOK, JSON.stringify(claudePostWrite(root, path.join(root, "readme.md"))));
+    expect(run.status).toBe(0);
+    const files = graphFiles(root);
+    expect(files["readme.md"]).toBeUndefined();
+    expect(JSON.stringify(files)).not.toContain("SYNTHETIC-KEY-CANARY");
+  });
+
+  test("a symlink to an ordinary file inside the project is still indexed", () => {
+    const root = makeCrankProject({ "a.ts": "const a = 1;", "src/real.md": "# Inside heading\n" });
+    seedIndex(root);
+    fs.symlinkSync(path.join(root, "src/real.md"), path.join(root, "alias.md"));
+    const run = runHook(HOOK, JSON.stringify(claudePostWrite(root, path.join(root, "alias.md"))));
+    expect(run.status).toBe(0);
+    expect(graphFiles(root)["alias.md"]!.description).toBe("Inside heading");
   });
 
   test("overwriting an indexed file past the size cap drops its entry", () => {
