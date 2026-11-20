@@ -24,17 +24,26 @@ export type EntryShare = Share & { summary: DigestSummary; links: string[]; fall
 
 type Files = { read: Set<string>; modified: Set<string> };
 
-/** Each owning root's files among the observation's paths, roots in first-cited order, each list deduped. */
+/** The session's own project root, its cwd, and each owning root's paths the transcript's tool calls named. */
+type Entry = { projectRoot: string; cwd: string; touched: Map<string, string[]> };
+
+/**
+ * Each owning root's files among the observation's paths, roots in first-cited order, each list deduped. A path
+ * in another project counts only when the transcript's tool calls named it: the digest model's output alone never
+ * authorizes a write to another project's store, since a prompt-injected transcript can steer that output.
+ */
 function ownedFiles(
   o: Digest["observations"][number],
-  cwd: string,
+  entry: Entry,
   ownerOf: (p: string) => Owner,
 ): Map<string, Files> {
   const byRoot = new Map<string, Files>();
   const add = (paths: string[], kind: keyof Files) => {
     for (const p of paths) {
-      const owned = ownedPath(ownerOf(path.resolve(cwd, p)));
+      const owned = ownedPath(ownerOf(path.resolve(entry.cwd, p)));
       if (owned === null) continue;
+      if (owned.root !== entry.projectRoot && !entry.touched.get(owned.root)?.includes(owned.rel))
+        continue;
       let files = byRoot.get(owned.root);
       if (files === undefined)
         byRoot.set(owned.root, (files = { read: new Set(), modified: new Set() }));
@@ -82,7 +91,7 @@ function shownRow(
  */
 function copiesByOwner(
   output: Digest,
-  entry: { projectRoot: string; cwd: string },
+  entry: Entry,
   ownerOf: (p: string) => Owner,
   nameOf: (root: string) => string,
 ): { copies: Map<string, NewObservation[]>; links: Set<string>; fallbacks: Fallback[] } {
@@ -92,7 +101,7 @@ function copiesByOwner(
   const fallbacks: Fallback[] = [];
   for (const o of output.observations) {
     const base = { type: o.type, title: o.title, narrative: o.narrative, facts: o.facts };
-    const files = ownedFiles(o, entry.cwd, ownerOf);
+    const files = ownedFiles(o, entry, ownerOf);
     const unowned = { ...base, filesRead: [], filesModified: [] };
     if (files.size === 0) copies.get(root)!.push({ ...unowned, refs: [] });
     else if (!files.has(root))
@@ -115,11 +124,12 @@ function copiesByOwner(
 /**
  * The entry project's share and one share per other project that gets an observation copy, a proposal or a
  * stale flag, by project name. A proposal goes to the listed project its `project` names, else to the entry; a
- * stale flag goes to the store whose shown row its handle names.
+ * stale flag goes to the store whose shown row its handle names. `entry.touched` is `ownedPaths` over the
+ * transcript's tool-call paths: another project's file the transcript never named is dropped from every copy.
  */
 export function route(
   output: Digest,
-  entry: { projectRoot: string; cwd: string },
+  entry: Entry,
   shown: Map<string, Shown>,
   ownerOf: (p: string) => Owner,
 ): { entry: EntryShare; others: Share[] } {

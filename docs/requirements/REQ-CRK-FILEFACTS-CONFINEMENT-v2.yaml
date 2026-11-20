@@ -1,0 +1,40 @@
+# Requirement record, committed verbatim below this header (Braided pilot, lane-rules §14).
+# Source: relay-kit-private kate-replies:replies/HO-CRK-20261117-CFKR--ceac42d77bbc.md, round 10
+# Written by API Kate (gpt-6.1-sol) 2026-11-20T01:36:13Z. Do not edit; a change is a new version from her.
+# Supersedes REQ-CRK-FILEFACTS-CONFINEMENT.yaml (v1). She noted she lacked v1 and could not confirm every
+# clause is kept; that check is asked of her in round 11. The file name is the lane's.
+id: REQ-CRK-FILEFACTS-CONFINEMENT
+version: 2
+authored_by: chatgpt:kate
+author_role: independent
+source_reference: handoffs/outputs/HO-CRK-20261117-CFKR.md#for-kate-round-10
+target_revision: d658616
+requirement: |
+  fileFacts must admit file content only through a confinement gate
+  establishing that the resolved target is within the resolved repository
+  root and that the opened descriptor refers to a regular file.
+
+  Final-component symlink substitution between path validation and open
+  is in scope. The open must use O_NOFOLLOW. If that protection is
+  unavailable or the protected open fails, admission must fail closed;
+  an unprotected fallback is not permitted.
+
+  Each successful fileFacts operation must use one file descriptor for
+  target-file content access. Size and modification time must come from
+  that descriptor. Content-derived facts, including token estimates,
+  description, and generated-file classification, must derive from bytes
+  read through it, without reopening a pathname. Descriptive filename
+  rules may use the admitted path.
+
+  Refused admission must return no facts. A caller updating stored facts
+  must remove an existing row for that path rather than retain or insert
+  facts from a refused operation.
+
+  Adversarial replacement of ancestor directories during validation,
+  open, or reading is out of scope. This requirement does not claim
+  race-free confinement against that attacker; O_NOFOLLOW protects only
+  the final component.
+
+  This requirement does not guarantee a coherent snapshot under
+  concurrent in-place file modification, nor does it require callers
+  to revalidate cached rows on paths where fileFacts is not invoked.

@@ -90,7 +90,8 @@ async function digest(
     settleEntry(stem, entry.updatedAt, "delete");
     return 0;
   }
-  const { context, shown } = await digestContext(memory, entry, d.paths);
+  const touched = ownedPaths(entry.cwd, d.paths);
+  const { context, shown } = await digestContext(memory, entry, touched);
   const r = await askClaude(digestRequest(d.text, memory.latestSummary(stem), context), {
     timeoutMs,
   });
@@ -98,7 +99,7 @@ async function digest(
   if (r.kind === "stopped") return 0;
   const session: SessionKey = { id: stem, agent: "claude", transcriptPath: entry.transcriptPath };
   if (r.kind === "rejected") return rejected(memory, session, entry);
-  const routed = route(stored(r.output), entry, shown, ownerOf);
+  const routed = route(stored(r.output), { ...entry, touched }, shown, ownerOf);
   const base = { session, next: d.next, model: r.model };
   const { written, held } = writeShares(routed.others, {
     ...base,
@@ -202,11 +203,10 @@ function otherProjects(
 async function digestContext(
   memory: Memory,
   entry: SpoolEntry,
-  paths: string[],
+  owned: Map<string, string[]>,
 ): Promise<{ context: DigestContext; shown: Map<string, Shown> }> {
   const md = readCerebrum(path.join(entry.projectRoot, CRANK_DIR));
   const cerebrum = md === null ? null : (splitPreamble(md).body?.trimEnd() ?? null);
-  const owned = ownedPaths(entry.cwd, paths);
   const others = otherProjects(entry, owned);
   const projects =
     others.length === 0

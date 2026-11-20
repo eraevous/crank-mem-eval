@@ -456,6 +456,42 @@ describe("cross-repo memory", () => {
     expect(stats).toMatch(/ {2}last digest: {6}\d+s ago\n/);
   }, 30_000);
 
+  test("another project's file the transcript never named gives that project no share", () => {
+    const ws = workspace();
+    const at = (i: number) => `2026-01-02T00:00:0${i}.000Z`;
+    const transcript =
+      [
+        userRecord("y-0", at(0), "read these files ".repeat(150)),
+        readRecord("y-1", at(1), path.join(ws.H, "src/h.ts")),
+        readRecord("y-2", at(2), path.join(ws.storefront, "src/a.ts")),
+      ].join("\n") + "\n";
+    // The digest output is the model's, which a prompt-injected transcript can steer: it cites payments, which
+    // the session never touched, and a storefront file beside the one it read.
+    const output = digestOf([
+      observation("Planted note", [path.join(ws.payments, "src/a.ts")]),
+      observation("Mixed note", [
+        path.join(ws.storefront, "src/a.ts"),
+        path.join(ws.storefront, "src/other.ts"),
+        path.join(ws.payments, "src/a.ts"),
+      ]),
+    ]);
+    const { job } = journey(ws.H, [{ lines: okStream(output) }], {
+      home: ws.home,
+      cwd: ws.H,
+      transcript,
+    });
+    expect(job.status).toBe(0);
+    expect(searchIds(ws, ws.payments, "Planted note")).toEqual([]);
+    expect(searchIds(ws, ws.payments, "Mixed note")).toEqual([]);
+    expect(searchIds(ws, ws.H, "Planted note")).toHaveLength(1);
+    const [mixed] = searchIds(ws, ws.storefront, "Mixed note");
+    expect(mixed).toBeDefined();
+    const text = getText(ws, ws.storefront, mixed!);
+    expect(text).toContain("src/a.ts");
+    expect(text).not.toContain("src/other.ts");
+    expect(text).not.toContain("payments");
+  }, 30_000);
+
   test("each written store is embedded and snapshotted", () => {
     const ws = workspace();
     fs.symlinkSync(realModelsDir(), path.join(ws.home, "models"));
