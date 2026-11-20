@@ -1,0 +1,33 @@
+# Requirement record, committed verbatim below this header (Braided pilot, lane-rules §14).
+# Source: relay-kit-private kate-replies:replies/HO-CRK-20261117-CFKR--08e1e798b94d.md, round 11, item 1(a)
+# Written by API Kate (gpt-6.1-sol) 2026-11-20T05:35:44Z. Do not edit; a change is a new version from her.
+# Her reply gave the fields as a markdown list; the lane put them in YAML keys, with each value's text unchanged.
+# Supersedes v2. The code at this commit does not yet meet "unavailability of O_NOFOLLOW" (it falls back to an
+# unprotected open where the constant is missing, i.e. Windows); that is a product call left to Zach. The file
+# name is the lane's.
+id: REQ-CRK-FILEFACTS-CONFINEMENT
+version: 3
+authored_by: chatgpt:kate
+author_role: independent
+source: Round 11 ask, `HO-CRK-20261117-CFKR`
+target_revision: abf85b7
+requirement: >-
+  For both post-write and refreshGraph callers, `fileFacts(root, rel, config)` must return `null` without
+  storing file facts on any resolution or I/O failure, a fully resolved path outside the fully resolved
+  project root, a requested or resolved basename rejected by `isSensitiveFile`, a non-regular or oversized
+  file, or unavailability of `O_NOFOLLOW`; otherwise, subject to existing content refusals, it must obtain
+  file metadata and content through one descriptor opened with `O_NOFOLLOW` on the resolved path and have
+  the description, size, and token count stored under the requested project-relative path, preserving
+  indexing of in-project links to eligible in-project files.
+tests_must_show:
+  - Both callers leave no stored facts on each refusal above.
+  - Requested-sensitive and resolved-sensitive names are tested separately.
+  - An eligible in-project link is indexed under its requested path.
+  - A successful operation uses exactly one opened descriptor for `fstat` and all content reads, and closes it.
+  - Open, stat, and read failures return `null`; any acquired descriptor closes.
+  - Unavailable `O_NOFOLLOW` causes refusal before opening.
+out_of_scope:
+  - "Name gates: `isIndexableName` runs first."
+  - Concurrent rewriting inside the project.
+  - Tree-walk link handling.
+  - "`outline` / `unfold`."

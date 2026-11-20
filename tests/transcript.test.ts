@@ -36,6 +36,19 @@ const toolCall = (name: string, input: object, id = "toolu_x") => ({
   message: { role: "assistant", content: [{ type: "tool_use", id, name, input }] },
 });
 const bashCall = (command: string) => toolCall("Bash", { command });
+/** One user record with a tool_result per id; `error` ids get `is_error: true`. */
+const toolResults = (ids: string[], error: string[] = []) => ({
+  type: "user",
+  message: {
+    role: "user",
+    content: ids.map((id) => ({
+      type: "tool_result",
+      tool_use_id: id,
+      content: "ok",
+      ...(error.includes(id) ? { is_error: true } : {}),
+    })),
+  },
+});
 
 describe("distill on the fixture transcript", () => {
   test("fixtures hold no home path and the expected text is ASCII, untrailed and at least 2,000 characters", () => {
@@ -193,6 +206,7 @@ describe("paths", () => {
       toolCall("NotebookEdit", { notebook_path: "nb.ipynb", new_source: "" }, "t3"),
       toolCall("Bash", { command: "cat src/b.ts src/c.ts" }, "t4"),
       toolCall("Read", { file_path: "/r/src/a.ts" }, "t5"),
+      toolResults(["t1", "t2", "t3", "t4", "t5"]),
     ]);
     expect(distill(file, null, 400_000).paths).toEqual([
       "/r/src/a.ts",
@@ -205,12 +219,26 @@ describe("paths", () => {
 
   test("leaves out paths from records at or before after, and from the record maxChars holds back", () => {
     const readOf = (p: string) => toolCall("Read", { file_path: p }, `read-${p}`);
-    const file = writeTranscript([readOf("a.ts"), userText("u"), readOf("b.ts")]);
+    const results = toolResults(["read-a.ts", "read-b.ts"]);
+    const file = writeTranscript([readOf("a.ts"), userText("u"), readOf("b.ts"), results]);
     expect(distill(file, pos(2), 400_000).paths).toEqual(["b.ts"]);
     const readText = `[TOOL_USE Read] ${JSON.stringify({ file_path: "a.ts" })}`;
     const d = distill(file, null, `${readText}\n\n[USER]\nu`.length); // admits records 1 and 2, not 3
     expect(d.next).toEqual(pos(2));
-    expect(d.paths).toEqual(["a.ts"]);
+    expect(d.paths).toEqual(["a.ts"]); // its result lies past the cut, in the file
+  });
+
+  test("a denied, errored or result-less call names no path", () => {
+    const file = writeTranscript([
+      toolCall("Read", { file_path: "ok.ts" }, "t1"),
+      toolCall("Read", { file_path: "denied.ts" }, "t2"),
+      toolCall("Bash", { command: "cat errored.ts" }, "t3"),
+      toolCall("Read", { file_path: "pending.ts" }, "t4"),
+      toolCall("Read", { file_path: "retried.ts" }, "t5"),
+      toolResults(["t1", "t2", "t3", "t5"], ["t2", "t3"]),
+      toolResults(["t5"], ["t5"]), // a second, failed result for the same id withdraws it
+    ]);
+    expect(distill(file, null, 400_000).paths).toEqual(["ok.ts"]);
   });
 });
 

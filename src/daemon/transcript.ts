@@ -5,7 +5,11 @@ import type { Position } from "../hooks/lib/memory.ts";
 import { shellReadPaths } from "../hooks/lib/shell-reads.ts";
 import { redact, stripBlocks } from "./redact.ts";
 
-/** `paths`: raw path strings the delta's tool calls name, each once, in first-seen order. */
+/**
+ * `paths`: raw path strings the delta's tool calls name, each once, in first-seen order. Only a call with a
+ * successful result in the file counts: a denied, errored or still-pending call names no path, since a digest
+ * shares observations into another project on these paths' authority.
+ */
 export type Distilled = {
   text: string;
   next: Position | null;
@@ -43,6 +47,7 @@ type Call = { name: string; skip: boolean; sensitive: boolean };
 export function distill(file: string, after: Position | null, maxChars: number): Distilled {
   const all = readRecords(file);
   const calls = indexCalls(all);
+  const succeeded = succeededCalls(all);
   const covered = coveredRecords(all, after);
 
   const kept: Kept = { parts: [], length: 0, truncated: false };
@@ -55,7 +60,7 @@ export function distill(file: string, after: Position | null, maxChars: number):
     if (text && !keep(kept, text, maxChars)) break;
     if (conversation) {
       records++;
-      for (const p of toolPaths(r)) paths.add(p);
+      for (const p of toolPaths(r, succeeded)) paths.add(p);
     }
     next = positionOf(r) ?? next;
     if (kept.truncated) break;
@@ -80,10 +85,11 @@ function keep(kept: Kept, text: string, maxChars: number): boolean {
   return true;
 }
 
-function toolPaths(r: Rec): string[] {
+function toolPaths(r: Rec, succeeded: Set<string>): string[] {
   const out: string[] = [];
   for (const b of blocksOf(r)) {
     if (b.type !== "tool_use" || !isObj(b.input)) continue;
+    if (typeof b.id !== "string" || !succeeded.has(b.id)) continue;
     const { file_path, path: p, notebook_path, command } = b.input;
     for (const v of [file_path, p, notebook_path]) if (typeof v === "string") out.push(v);
     if (b.name === "Bash" && typeof command === "string") out.push(...shellReadPaths(command));
@@ -130,6 +136,24 @@ function contentOf(r: Rec): unknown {
 function blocksOf(r: Rec): Block[] {
   const content = contentOf(r);
   return Array.isArray(content) ? content.filter(isObj) : [];
+}
+
+/**
+ * The tool_use ids with a result in the file that is not an error. A call the user or a hook denied gets an
+ * `is_error: true` result; a call with no result yet (pending, or the session died) is absent.
+ */
+function succeededCalls(all: Rec[]): Set<string> {
+  const ok = new Set<string>();
+  const failed = new Set<string>();
+  for (const r of all) {
+    if (r.type !== "user") continue;
+    for (const b of blocksOf(r)) {
+      if (b.type !== "tool_result" || typeof b.tool_use_id !== "string") continue;
+      (b.is_error === false || b.is_error === undefined ? ok : failed).add(b.tool_use_id);
+    }
+  }
+  for (const id of failed) ok.delete(id);
+  return ok;
 }
 
 /** Every tool_use id in the file, so a result in a delta keeps its call's name and treatment. */

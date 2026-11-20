@@ -82,7 +82,7 @@ function crossTranscript(ws: Ws): {
   ];
   return {
     transcript: records.join("\n") + "\n",
-    last: { uuid: `x-${files.length}`, timestamp: at(files.length) },
+    last: { uuid: `x-${files.length}-r`, timestamp: at(files.length) },
   };
 }
 
@@ -490,6 +490,34 @@ describe("cross-repo memory", () => {
     expect(text).toContain("src/a.ts");
     expect(text).not.toContain("src/other.ts");
     expect(text).not.toContain("payments");
+  }, 30_000);
+
+  test("a denied or result-less read of another project gives that project no share", () => {
+    const ws = workspace();
+    const at = (i: number) => `2026-01-02T00:00:0${i}.000Z`;
+    const transcript =
+      [
+        userRecord("z-0", at(0), "read these files ".repeat(150)),
+        readRecord("z-1", at(1), path.join(ws.H, "src/h.ts")),
+        readRecord("z-2", at(2), path.join(ws.payments, "src/a.ts"), "denied"),
+        readRecord("z-3", at(3), path.join(ws.storefront, "src/a.ts"), "pending"),
+      ].join("\n") + "\n";
+    // The session asked to read both files; the user refused one and the other never returned. A steered digest
+    // cites each exact path, so only the tool results tell the calls apart from real reads.
+    const output = digestOf([
+      observation("Denied note", [path.join(ws.payments, "src/a.ts")]),
+      observation("Pending note", [path.join(ws.storefront, "src/a.ts")]),
+    ]);
+    const { job } = journey(ws.H, [{ lines: okStream(output) }], {
+      home: ws.home,
+      cwd: ws.H,
+      transcript,
+    });
+    expect(job.status).toBe(0);
+    expect(searchIds(ws, ws.payments, "Denied note")).toEqual([]);
+    expect(searchIds(ws, ws.storefront, "Pending note")).toEqual([]);
+    expect(searchIds(ws, ws.H, "Denied note")).toHaveLength(1);
+    expect(searchIds(ws, ws.H, "Pending note")).toHaveLength(1);
   }, 30_000);
 
   test("each written store is embedded and snapshotted", () => {

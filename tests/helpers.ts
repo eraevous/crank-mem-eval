@@ -670,18 +670,45 @@ export function userRecord(uuid: string, timestamp: string, content: string): st
 }
 
 /** An `assistant` transcript record holding one `Read` call of `filePath`, as one JSONL line. */
-export function readRecord(uuid: string, timestamp: string, filePath: string): string {
-  return JSON.stringify({
+/**
+ * An assistant Read of `filePath` and, unless `result` is "pending", the user record holding its tool_result
+ * (uuid `<uuid>-r`, same timestamp). "denied" gives the `is_error: true` result a refused call gets.
+ */
+export function readRecord(
+  uuid: string,
+  timestamp: string,
+  filePath: string,
+  result: "ok" | "denied" | "pending" = "ok",
+): string {
+  const id = "toolu_" + uuid;
+  const use = JSON.stringify({
     type: "assistant",
     uuid,
     timestamp,
     message: {
       role: "assistant",
+      content: [{ type: "tool_use", id, name: "Read", input: { file_path: filePath } }],
+    },
+  });
+  if (result === "pending") return use;
+  const denied = result === "denied";
+  const res = JSON.stringify({
+    type: "user",
+    uuid: uuid + "-r",
+    timestamp,
+    message: {
+      role: "user",
       content: [
-        { type: "tool_use", id: "toolu_" + uuid, name: "Read", input: { file_path: filePath } },
+        {
+          type: "tool_result",
+          tool_use_id: id,
+          content: denied ? "The user doesn't want to proceed with this tool use." : "1\tok",
+          ...(denied ? { is_error: true } : {}),
+        },
       ],
     },
   });
+  return use + "\n" + res;
 }
 
 /** Append records to a transcript; the leading newline ends the fixture's partial last line. */
