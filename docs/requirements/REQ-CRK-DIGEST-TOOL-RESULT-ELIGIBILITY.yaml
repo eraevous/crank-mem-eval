@@ -1,0 +1,46 @@
+# Requirement record, committed verbatim below this header (Braided pilot, lane-rules §14).
+# Source: relay-kit-private kate-replies:replies/HO-CRK-20261117-CFKR--faa3f9e6db49.md, round 12, item (a)
+# Written by API Kate (gpt-6.1-sol) 2026-11-20T13:37:00Z. Do not edit; a change is a new version from her.
+# She targets 4a9a30c; Codex's third P2 (13:38Z, a call pending at one delta's cut whose result lands in the
+# next) is fixed in the commit that adds this file, which her acceptance line "A matching non-error result
+# after the delta cut qualifies its call" also covers.
+id: REQ-CRK-DIGEST-TOOL-RESULT-ELIGIBILITY
+authored_by: chatgpt:kate
+author_role: independent
+source_reference: handoffs/outputs/HO-CRK-20261117-CFKR.md#for-kate-round-12
+target_revision: eraevous/crank-mem-eval@4a9a30c
+title: Require a matched non-error result for tool-call path attribution
+
+requirement: |
+  A path extracted from a tool call MUST NOT contribute to project
+  attribution unless that call has a matching tool_result in the same
+  transcript.
+
+  A qualifying result has is_error absent or exactly false.
+  Any matching error result disqualifies that call, even if another
+  matching result is non-error. An invalid is_error value MUST NOT
+  establish eligibility.
+
+  Result matching MUST use the tool-call identifier, not proximity or
+  path text. Results from another transcript MUST NOT qualify a call.
+
+  Eligibility MUST consider the full available transcript snapshot,
+  including results after the delta cut. A call pending at that snapshot
+  contributes no paths.
+
+  This rule filters tool-derived paths only. It neither replaces
+  cross-project path-binding checks nor independently authorizes
+  observation placement.
+
+acceptance: |
+  Denied, errored, pending, and success-then-error calls contribute
+  no paths.
+  An unmatched result does not qualify another call.
+  A matching non-error result after the delta cut qualifies its call.
+  A result in another transcript cannot qualify a call.
+  Invalid is_error values alone do not qualify a call.
+
+non_goals: |
+  Proving that a named path exists, was accessed, or had its content read.
+  Proving that a non-error Bash result means every command or pipeline
+  component succeeded.

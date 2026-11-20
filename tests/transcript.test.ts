@@ -220,8 +220,18 @@ describe("paths", () => {
   test("leaves out paths from records at or before after, and from the record maxChars holds back", () => {
     const readOf = (p: string) => toolCall("Read", { file_path: p }, `read-${p}`);
     const results = toolResults(["read-a.ts", "read-b.ts"]);
+    const settled = writeTranscript([
+      readOf("a.ts"),
+      toolResults(["read-a.ts"]),
+      userText("u"),
+      readOf("b.ts"),
+      toolResults(["read-b.ts"]),
+    ]);
+    expect(distill(settled, pos(3), 400_000).paths).toEqual(["b.ts"]);
     const file = writeTranscript([readOf("a.ts"), userText("u"), readOf("b.ts"), results]);
-    expect(distill(file, pos(2), 400_000).paths).toEqual(["b.ts"]);
+    // a.ts's call lies before the delta but its result lands in it, so the delta names it too (and the first
+    // digest below named it already, since its result was in the file then): at least once, on the same authority.
+    expect(distill(file, pos(2), 400_000).paths).toEqual(["b.ts", "a.ts"]);
     const readText = `[TOOL_USE Read] ${JSON.stringify({ file_path: "a.ts" })}`;
     const d = distill(file, null, `${readText}\n\n[USER]\nu`.length); // admits records 1 and 2, not 3
     expect(d.next).toEqual(pos(2));
@@ -239,6 +249,38 @@ describe("paths", () => {
       toolResults(["t5"], ["t5"]), // a second, failed result for the same id withdraws it
     ]);
     expect(distill(file, null, 400_000).paths).toEqual(["ok.ts"]);
+  });
+
+  test("a call pending at one delta names its path in the delta that holds its successful result", () => {
+    const early = [
+      toolCall("Read", { file_path: "late.ts" }, "t1"),
+      toolCall("Read", { file_path: "refused.ts" }, "t2"),
+      toolCall("Read", { file_path: "done.ts" }, "t3"),
+      toolResults(["t3"]),
+    ];
+    const first = distill(writeTranscript(early), null, 400_000);
+    expect(first.paths).toEqual(["done.ts"]); // t1 and t2 are still pending
+    expect(first.next).toEqual(pos(4));
+    // A mid-session digest saved pos(4); t1 then succeeds and t2 is denied, past that position.
+    const later = writeTranscript([...early, toolResults(["t1", "t2"], ["t2"]), userText("u")]);
+    expect(distill(later, first.next, 400_000).paths).toEqual(["late.ts"]);
+  });
+
+  test("an invalid is_error, or a result whose id matches no call, qualifies nothing", () => {
+    const resultWith = (id: string, extra: object) => ({
+      type: "user",
+      message: {
+        role: "user",
+        content: [{ type: "tool_result", tool_use_id: id, content: "ok", ...extra }],
+      },
+    });
+    const file = writeTranscript([
+      toolCall("Read", { file_path: "stringly.ts" }, "t1"),
+      toolCall("Read", { file_path: "unmatched.ts" }, "t2"),
+      resultWith("t1", { is_error: "false" }),
+      resultWith("t9", {}),
+    ]);
+    expect(distill(file, null, 400_000).paths).toEqual([]);
   });
 });
 

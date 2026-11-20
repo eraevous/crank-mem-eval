@@ -8,7 +8,8 @@ import { redact, stripBlocks } from "./redact.ts";
 /**
  * `paths`: raw path strings the delta's tool calls name, each once, in first-seen order. Only a call with a
  * successful result in the file counts: a denied, errored or still-pending call names no path, since a digest
- * shares observations into another project on these paths' authority.
+ * shares observations into another project on these paths' authority. A successful result in the delta whose call
+ * lies before it names that call's paths here, so a call pending at an earlier cut is not lost.
  */
 export type Distilled = {
   text: string;
@@ -47,7 +48,7 @@ type Call = { name: string; skip: boolean; sensitive: boolean };
 export function distill(file: string, after: Position | null, maxChars: number): Distilled {
   const all = readRecords(file);
   const calls = indexCalls(all);
-  const succeeded = succeededCalls(all);
+  const named = namedPaths(all, succeededCalls(all));
   const covered = coveredRecords(all, after);
 
   const kept: Kept = { parts: [], length: 0, truncated: false };
@@ -60,7 +61,7 @@ export function distill(file: string, after: Position | null, maxChars: number):
     if (text && !keep(kept, text, maxChars)) break;
     if (conversation) {
       records++;
-      for (const p of toolPaths(r, succeeded)) paths.add(p);
+      for (const p of toolPaths(r, named)) paths.add(p);
     }
     next = positionOf(r) ?? next;
     if (kept.truncated) break;
@@ -85,15 +86,39 @@ function keep(kept: Kept, text: string, maxChars: number): boolean {
   return true;
 }
 
-function toolPaths(r: Rec, succeeded: Set<string>): string[] {
+/**
+ * The paths a covered record names: its own successful calls', and, for each successful result it holds, that
+ * result's call's, so a call still pending when an earlier delta was cut names its paths in the delta its result
+ * lands in. A call and its result in the same delta name the same paths once (the caller's set dedupes).
+ */
+function toolPaths(r: Rec, named: Map<string, string[]>): string[] {
   const out: string[] = [];
   for (const b of blocksOf(r)) {
-    if (b.type !== "tool_use" || !isObj(b.input)) continue;
-    if (typeof b.id !== "string" || !succeeded.has(b.id)) continue;
-    const { file_path, path: p, notebook_path, command } = b.input;
-    for (const v of [file_path, p, notebook_path]) if (typeof v === "string") out.push(v);
-    if (b.name === "Bash" && typeof command === "string") out.push(...shellReadPaths(command));
+    const id = b.type === "tool_use" ? b.id : b.type === "tool_result" ? b.tool_use_id : undefined;
+    if (typeof id === "string") out.push(...(named.get(id) ?? []));
   }
+  return out;
+}
+
+/** The paths each successful call's input names, by tool_use id. */
+function namedPaths(all: Rec[], succeeded: Set<string>): Map<string, string[]> {
+  const named = new Map<string, string[]>();
+  for (const r of all) {
+    for (const b of blocksOf(r)) {
+      if (b.type === "tool_use" && typeof b.id === "string" && succeeded.has(b.id)) {
+        named.set(b.id, inputPaths(b));
+      }
+    }
+  }
+  return named;
+}
+
+function inputPaths(b: Block): string[] {
+  if (!isObj(b.input)) return [];
+  const { file_path, path: p, notebook_path, command } = b.input;
+  const out: string[] = [];
+  for (const v of [file_path, p, notebook_path]) if (typeof v === "string") out.push(v);
+  if (b.name === "Bash" && typeof command === "string") out.push(...shellReadPaths(command));
   return out;
 }
 
