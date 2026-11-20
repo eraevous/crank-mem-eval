@@ -146,16 +146,26 @@ function fromDeclaration(head: string): string | null {
 }
 
 export function describeFile(filePath: string): string {
-  const base = path.basename(filePath).toLowerCase();
-  const known = KNOWN_FILENAMES[base];
-
   let head: string;
   try {
     head = readHead(filePath);
   } catch {
-    return known ?? "";
+    return KNOWN_FILENAMES[path.basename(filePath).toLowerCase()] ?? "";
   }
+  return describeHead(filePath, head);
+}
 
+/**
+ * `describeFile` over bytes the caller already read, so the gate's one descriptor is the only open
+ * (`scanner.ts` → `fileFacts`). Uses the first HEAD_BYTES of `content`, as `describeFile` reads them.
+ */
+export function describeContent(filePath: string, content: Buffer): string {
+  return describeHead(filePath, content.toString("utf-8", 0, Math.min(content.length, HEAD_BYTES)));
+}
+
+function describeHead(filePath: string, head: string): string {
+  const base = path.basename(filePath).toLowerCase();
+  const known = KNOWN_FILENAMES[base];
   const ext = path.extname(base);
   if (base === "package.json") {
     // Prefer the manifest's own description over the generic label.

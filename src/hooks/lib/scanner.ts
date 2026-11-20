@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { describeFile, isGenerated } from "./describe.ts";
+import { describeContent, isGenerated } from "./describe.ts";
 import { estimateTokens } from "./tokens.ts";
 import { isExcluded, type CrankConfig } from "./config.ts";
 import { BINARY_SNIFF_BYTES, isIndexableName, SOURCE_EXTENSIONS, toPosix } from "./indexable.ts";
@@ -37,7 +37,8 @@ export function fileFacts(rootDir: string, relPath: string, config: CrankConfig)
     size: stat.size,
     mtimeMs: stat.mtimeMs,
     tokens: estimateTokens(content, absPath),
-    description: describeFile(read.real),
+    // From the admitted bytes: reopening `read.real` would be a second, unchecked open.
+    description: describeContent(read.real, buf),
     generated: isGenerated(content),
   };
 }

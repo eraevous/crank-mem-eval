@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -183,6 +183,32 @@ describe("fileFacts", () => {
       fs.chmodSync(locked, 0o644);
     }
     expect(fileFacts(root, "ok.ts", config)).not.toBeNull();
+  });
+
+  // REQ-CRK-FILEFACTS-CONFINEMENT: one descriptor for the whole operation (Kate, round 9). In-process,
+  // since no black-box run can see a second open: bun's spyOn on the namespace reaches the modules'
+  // `import * as fs` calls (it counted describe.ts's reopen before the fix).
+  test("opens the file once: the description comes from the admitted bytes", () => {
+    const root = makeProject({
+      "notes.md": "# Notes\nbody",
+      "src/w.ts": "/** Widget engine. */\nexport const w = 1;\n",
+      "package.json": '{"description":"My tool"}',
+    });
+    const opens = spyOn(fs, "openSync");
+    try {
+      for (const [rel, description] of [
+        ["notes.md", "Notes"],
+        ["src/w.ts", "Widget engine."],
+        ["package.json", "My tool"],
+      ] as const) {
+        opens.mockClear();
+        expect(fileFacts(root, rel, defaultConfig())!.description).toBe(description);
+        const paths = opens.mock.calls.map((c) => String(c[0]));
+        expect(paths).toEqual([fs.realpathSync(path.join(root, rel))]);
+      }
+    } finally {
+      opens.mockRestore();
+    }
   });
 });
 
