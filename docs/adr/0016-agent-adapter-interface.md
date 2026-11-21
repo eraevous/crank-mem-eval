@@ -138,7 +138,8 @@ export function agentNames(): string[];            // what --agents accepts, plu
    that for a missing, `codex`, unknown and non-string agent, written before the move.
 
 New tests (black-box where the behavior is reachable, per CLAUDE.md), **written before the move
-so they pin today's behavior** (Kate, review round 1):
+so they pin today's behavior** (Kate, an independent reviewer from a different model family
+(ChatGPT), review round 1):
 
 - `--agents` rejects a name not in the registry, and `both` still means every agent.
 - `crankHooks` output for each adapter is byte-identical to today's, pinned by a golden.
@@ -161,8 +162,9 @@ so they pin today's behavior** (Kate, review round 1):
   above shrinks to "see `src/cli/agents.ts`".
 - `HookEvent` is one more shape crossing the vendored boundary. `drift.ts` already warns when the
   vendored hooks lag the CLI, so an old vendored copy is caught the same way as today.
-- The refactor touches hook files; Lydian's hook-guard needs their new fingerprints before the PR
-  can go green (lane prompt §4).
+- The refactor touches hook files; the hook guard in Lydian (the repository that runs the
+  records checks) needs their new content hashes (fingerprints) before the PR can go green (agent
+  (lane) prompt §4).
 
 ## Dissent review (AGENTS rule for a change of module responsibility)
 

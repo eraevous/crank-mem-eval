@@ -1,7 +1,7 @@
 # crank-mem — safety fixes and guided installer proposal
 
 **Status:** private proposal for review. Not sent upstream.
-**Prepared by:** ABI builder lane (Claude Opus 5.5), for Abigail and Zach, 2026-11-10.
+**Prepared by:** ABI builder lane (an agent; Claude Opus 5.5), for Abigail and Zach, 2026-11-10.
 **Subject:** `ChrisLiva/crank-mem` at `2d72f6c012cfb96926fd169251759efb3323c342` (v0.11.0).
 At the time of review this is also `origin/main`.
 
@@ -363,7 +363,8 @@ one line per problem plus a suggested command.
 1. **No license.** Upstream contributions are blocked until the maintainer adds one, or
    grants permission. Until then:
    - Deliverables stay as specification plus original tests.
-   - No fork or repackaging into Kairos.
+   - No fork or repackaging into Kairos (Zach Rhodes's umbrella project for Cognitive
+     Augmentation tools).
    - Contacting the maintainer is Zach's call; not done.
 2. **Write access.** Pull only, with no push. Matches the assignment, which is review only.
 3. **Live re-probes R1 and R2** need a Claude Code session against a synthetic sentinel

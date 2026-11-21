@@ -32,7 +32,8 @@ installer changes in it:
 Branch `aegis/safety-fixes`, prepared for Zach Rhodes with Claude (Anthropic).
 Each change is listed with its commit; see `git log 2d72f6c..` for the full history.
 
-- `a48249f` — this file, and Telosmith records in `.aec/` (purpose, requirements, decisions).
+- `a48249f` — this file, and requirements traceability records in `.aec/` (purpose, requirements,
+  decisions) for Telosmith, Zach's traceability tool.
 - `3aeb6e0` — confine indexing to the project by real path (`src/hooks/lib/contained.ts`).
 - `3b776c0` — honour the enclosing repository for monorepo subdirectory projects; a git failure
   inside a repository now keeps the previous index (reverses an upstream fallback, see the

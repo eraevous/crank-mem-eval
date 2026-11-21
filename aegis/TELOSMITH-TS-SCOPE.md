@@ -1,7 +1,10 @@
 # Scope: TypeScript support in Telosmith code linking
 
+Telosmith is Zach's requirements traceability tool: it links purposes and requirements to code
+and marks a link suspect when the code changes.
+
 **Status:** scoping only. No Telosmith code was changed.
-**Prepared by:** ABI builder lane (Claude Opus 5.5), 2026-11-10.
+**Prepared by:** ABI builder lane (an agent; Claude Opus 5.5), 2026-11-10.
 **Read:** `eraevous/Telosmith` at `f4f16d3`.
 
 ## Where things stand
@@ -92,5 +95,6 @@ reference extractor costs it nothing.
   requirements' code links are prose rather than checked references.
 - **Can it wait?** Yes. The crank-mem fixes don't depend on it, and the records are already
   useful for review.
-- **What depends on it:** any future non-Python Kairos package that wants checked code links,
-  and the protocol decision, which belongs to the Telosmith lane or to Zach.
+- **What depends on it:** any future non-Python package in Kairos (Zach Rhodes's umbrella
+  project for Cognitive Augmentation tools) that wants checked code links,
+  and the protocol decision, which belongs to the Telosmith agent (lane) or to Zach.
