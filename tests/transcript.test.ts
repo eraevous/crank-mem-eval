@@ -251,6 +251,24 @@ describe("paths", () => {
     expect(distill(file, null, 400_000).paths).toEqual(["ok.ts"]);
   });
 
+  test("a successful result in a sibling or subagent transcript does not qualify a call in this one", () => {
+    const call = toolCall("Read", { file_path: "elsewhere.ts" }, "t1");
+    const file = writeTranscript([call, userText("u")]);
+    const dir = path.dirname(file);
+    // Claude Code keeps a session's subagent transcripts beside it; another session sits next to it too.
+    const line = (r: object, n: number) => JSON.stringify({ ...pos(n), ...r }) + "\n";
+    fs.mkdirSync(path.join(dir, "s1", "subagents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "s1", "subagents", "agent-a.jsonl"),
+      line(toolResults(["t1"]), 1),
+    );
+    fs.writeFileSync(path.join(dir, "s2.jsonl"), line(toolResults(["t1"]), 1));
+    expect(distill(file, null, 400_000).paths).toEqual([]);
+    // The fixture does exercise eligibility: the same call with a result in this file is named.
+    fs.appendFileSync(file, line(toolResults(["t1"]), 3));
+    expect(distill(file, null, 400_000).paths).toEqual(["elsewhere.ts"]);
+  });
+
   test("a call pending at one delta names its path in the delta that holds its successful result", () => {
     const early = [
       toolCall("Read", { file_path: "late.ts" }, "t1"),
