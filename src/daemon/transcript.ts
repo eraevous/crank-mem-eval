@@ -10,6 +10,9 @@ import { redact, stripBlocks } from "./redact.ts";
  * successful result in the file counts: a denied, errored or still-pending call names no path, since a digest
  * shares observations into another project on these paths' authority. A successful result in the delta whose call
  * lies before it names that call's paths here, so a call pending at an earlier cut is not lost.
+ * Naming is at least once, not exactly once: a call whose result was already in the file when an earlier digest
+ * cut before it is named by both digests. `paths` only gates which projects a digest may route to and which
+ * earlier rows its prompt shows (`digest-job.ts` → `touched`); it adds no row and feeds no count or rank.
  */
 export type Distilled = {
   text: string;
