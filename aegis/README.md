@@ -5,7 +5,8 @@ Not part of crank-mem; see `../ATTRIBUTION.md`.
 - `PROPOSAL.md` — the static review this branch implements (F1–F3) plus the installer, doctor
   and rollback design (section 2, since built; see below). Written before the fixes; the commits on this
   branch carry the implementation and test results.
-- `TELOSMITH-TS-SCOPE.md` — what it would take for Telosmith to link records to TypeScript code.
+- `TELOSMITH-TS-SCOPE.md` — what it would take for Telosmith (Zach's requirements traceability
+  tool) to link records to TypeScript code.
 - `TICKETS.md` — the follow-up tickets (more agents, more operating systems), filed as issues
   #1–#6.
 - `probes/` — the original synthetic probes the review ran (Node fs primitives, git in a

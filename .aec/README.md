@@ -1,5 +1,8 @@
 # .aec: purpose and justification records (Telosmith, formerly AEC)
 
+Telosmith is Zach's requirements traceability tool: it links a project's purposes to its
+requirements, claims and code, and marks a link suspect when something it relies on changes.
+
 - `records.jsonl`: append-only reasoning records (purpose, requirements, claims, evidence, decisions,
   authorities). Never edit a line; append a new version. Vocabulary:
   https://github.com/eraevous/Telosmith/blob/main/docs/reasoning-vocabulary.md
@@ -11,5 +14,5 @@ Start by replacing the purpose stub `P0` with a new version stating what this pr
 own words (`"version": 2`, `"epistemic": "provisional"` while you are still discovering it,
 `"committed"` once changes to it should need your authorization).
 
-All Telosmith results are structural: they show what changed and what relied on it, not whether the
+All Telosmith results are structural: they show what changed and which links it made suspect, not whether the
 remaining evidence is good enough. That stays a review question.
