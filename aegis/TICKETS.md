@@ -1,7 +1,9 @@
 # Tickets: more agents, more operating systems
 
 **Status:** filed as issues #1–#6 on `eraevous/crank-mem-eval` (labels `agents` and `platform`).
-**Builds on:** this branch, `aegis/safety-fixes`, the working branch from here on.
+**Builds on:** `main`. The work began on `aegis/safety-fixes`, which is merged.
+**Progress:** A1 is built (PR #14, ADR 0016); issue #1 is still open. The file names under A1's
+"Why" are as they were when it was written; some have since moved (`install-agents.ts` is gone).
 
 | Ticket | Issue |
 |---|---|
