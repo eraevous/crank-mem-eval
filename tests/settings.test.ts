@@ -17,7 +17,7 @@ import {
   isGeneratedHookCommand,
 } from "../src/cli/settings.ts";
 import { vendorHooks } from "../src/cli/vendor.ts";
-import { ALLOW_RULES, childEnv, makeCrankProject } from "./helpers.ts";
+import { ALLOW_RULES, REPO_ROOT, childEnv, makeCrankProject } from "./helpers.ts";
 import { claudeSessionStart } from "./fixtures/payloads.ts";
 
 function tmpFile(name = "settings.json"): string {
@@ -227,6 +227,25 @@ describe("wired commands", () => {
       expect(run.status).toBe(0);
       expect(JSON.parse(run.stdout)).toEqual([]);
     }
+  });
+
+  test("this repository's own .codex/hooks.json uses the current, .env-isolated commands", () => {
+    // The checked-in file is what Codex runs in a checkout of this repository, so it must
+    // not lag what crank-mem writes: a bare `bun` runner loads a PR-controlled .env (an
+    // LD_PRELOAD into the git the hook spawns, say). Codex security review on #15.
+    const checkedIn = JSON.parse(
+      fs.readFileSync(path.join(REPO_ROOT, ".codex", "hooks.json"), "utf-8"),
+    ).hooks as Record<string, { hooks: { command: string }[] }[]>;
+    const current = new Set(
+      Object.values(crankHooks("bun", "codex"))
+        .flat()
+        .map((group) => group.hooks[0]!.command),
+    );
+    const commands = Object.values(checkedIn)
+      .flat()
+      .flatMap((group) => group.hooks.map((h) => h.command));
+    expect(commands.length).toBeGreaterThan(0);
+    for (const command of commands) expect(current.has(command)).toBe(true);
   });
 });
 
